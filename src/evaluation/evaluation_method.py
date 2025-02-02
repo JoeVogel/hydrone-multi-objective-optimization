@@ -1,14 +1,6 @@
-from abc import ABC, abstractmethod
-from enum import Enum, auto
-
-class EvaluationType(Enum):
-    AERIAL  = auto()
-    AQUATIC = auto()
-    
-class FidelityLevel(Enum):
-    LOW     = auto()
-    MEDIUM  = auto()
-    HIGH    = auto()
+from abc                        import ABC, abstractmethod    
+from .evaluation_type           import EvaluationType
+from .fidelity_level            import FidelityLevel
 
 class EvaluationMethod(ABC):
     
@@ -17,7 +9,8 @@ class EvaluationMethod(ABC):
         self.fidelity_level = fidelity_level
     
     @abstractmethod
-    def evaluate(self, individual):
+    def evaluate(self, param1, param2, param3):
+        
         """Evaluate the given individual and return a fitness value."""
         pass
         
