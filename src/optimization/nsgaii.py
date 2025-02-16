@@ -1,5 +1,8 @@
+import os
 import random
 import logging
+
+import pandas as pd
 
 from evaluation.evaluation_method   import EvaluationMethod
 from .individual                    import Individual
@@ -23,6 +26,16 @@ class NSGAII:
         self.aquatic_evaluation_method  = aquatic_evaluation_method
         self.seed                       = seed
         self.mutation_rate              = mutation_rate
+        
+        csv_path = os.path.join(os.path.dirname(__file__), "../../data/decision_variables.csv")
+        df = pd.read_csv(csv_path)
+        
+        self.min_alpha = df["min_alpha"][0]
+        self.max_alpha = df["max_alpha"][0]
+        self.min_diameter = df["min_diameter"][0]
+        self.max_diameter = df["max_diameter"][0]
+        self.min_blade_number = df["min_blade_num"][0]
+        self.max_blade_number = df["max_blade_num"][0]
 
     def run(self):
         """
@@ -34,8 +47,12 @@ class NSGAII:
 
             # Evaluate population
             for individual in population:
-                individual.aerial_fitness = self.aerial_evaluation_method.evaluate(individual.gene1, individual.gene2, individual.gene3)
-                individual.aquatic_fitness = self.aquatic_evaluation_method.evaluate(individual.gene1, individual.gene2, individual.gene3)
+                
+                aerial_T, aerial_Q, aerial_eta, aerial_re = self.aerial_evaluation_method.evaluate(individual.alpha, individual.D, individual.B)
+                individual.aerial_fitness = aerial_eta
+                
+                aquatic_T, aquatic_Q, aquatic_eta, aquatic_cav, aquatic_v_tip, aquatic_re = self.aquatic_evaluation_method.evaluate(individual.alpha, individual.D, individual.B)
+                individual.aquatic_fitness = aquatic_eta
 
             # Perform non-dominated sorting
             fronts = self._fast_non_dominated_sort(population)
@@ -62,11 +79,10 @@ class NSGAII:
         random.seed(self.seed)
         
         for _ in range(self.population_size):
-            # TODO: ajustar de acordo com os genes
             individual = Individual(
-                gene1=random.uniform(-5, 5),
-                gene2=random.uniform(-5, 5),
-                gene3=random.uniform(-5, 5),
+                alpha=random.uniform(self.min_alpha, self.max_alpha),
+                D=random.uniform(self.min_diameter, self.max_diameter),
+                B=random.uniform(self.min_blade_number, self.max_blade_number),
             )
             population.append(individual)
         return population
@@ -139,27 +155,48 @@ class NSGAII:
 
                 front[i].crowding_distance += (next_fitness - prev_fitness) / (max_value - min_value)
 
-    def _dominates(self, individual1:Individual, individual2:Individual):
+    # def _dominates(self, individual1:Individual, individual2:Individual):
+    #     """
+    #     Checks if individual1 dominates individual2.
+    #     An individual dominates another if:
+    #     - It is better (lower value) in at least one objective
+    #     - It is not worse in any objective
+    #     """
+        
+    #     better_in_one = False
+
+    #     # Comparação para cada objetivo (fitness aéreo e fitness aquático)
+    #     if individual1.aerial_fitness < individual2.aerial_fitness:
+    #         better_in_one = True
+    #     elif individual1.aerial_fitness > individual2.aerial_fitness:
+    #         return False  # Se piora em algum objetivo, não domina
+
+    #     if individual1.aquatic_fitness < individual2.aquatic_fitness:
+    #         better_in_one = True
+    #     elif individual1.aquatic_fitness > individual2.aquatic_fitness:
+    #         return False  # Se piora em algum objetivo, não domina
+
+    #     return better_in_one
+    
+    def _dominates(self, individual1: Individual, individual2: Individual):
         """
         Checks if individual1 dominates individual2.
         An individual dominates another if:
-        - It is better (lower value) in at least one objective
+        - It is better (higher value) in at least one objective
         - It is not worse in any objective
         """
-        
-        # TODO: ajustar de acordo com a métrica objetivo definida (melhor significa maior ou menor?)
         
         better_in_one = False
 
         # Comparação para cada objetivo (fitness aéreo e fitness aquático)
-        if individual1.aerial_fitness < individual2.aerial_fitness:
+        if individual1.aerial_fitness > individual2.aerial_fitness:  # Agora queremos valores maiores
             better_in_one = True
-        elif individual1.aerial_fitness > individual2.aerial_fitness:
+        elif individual1.aerial_fitness < individual2.aerial_fitness:
             return False  # Se piora em algum objetivo, não domina
 
-        if individual1.aquatic_fitness < individual2.aquatic_fitness:
+        if individual1.aquatic_fitness > individual2.aquatic_fitness:  # Agora queremos valores maiores
             better_in_one = True
-        elif individual1.aquatic_fitness > individual2.aquatic_fitness:
+        elif individual1.aquatic_fitness < individual2.aquatic_fitness:
             return False  # Se piora em algum objetivo, não domina
 
         return better_in_one
@@ -203,11 +240,10 @@ class NSGAII:
         """
         Performs crossover between two parents to produce a child.
         """
-        # TODO: adequar ao formato do chromossomo
         child = Individual(
-            gene1=(parent1.gene1 + parent2.gene1) / 2,
-            gene2=(parent1.gene2 + parent2.gene2) / 2,
-            gene3=(parent1.gene3 + parent2.gene3) / 2,
+            alpha=(parent1.alpha + parent2.alpha) / 2,
+            D=(parent1.D + parent2.D) / 2,
+            B=(parent1.B + parent2.B) / 2,
         )
         return child
 
@@ -215,10 +251,16 @@ class NSGAII:
         """
         Perform mutation on an individual's parameters.
         """
-        # TODO: adequar ao formato do chromossomo
+        # Aplicação da mutação com restrição de valores dentro dos limites
         if random.random() < mutation_rate:
-            individual.gene1 += random.uniform(-1, 1)
+            individual.alpha += random.uniform(-0.1, 0.1)
+            individual.alpha = max(self.min_alpha, min(individual.alpha, self.max_alpha))  # Garante que alpha esteja dentro dos limites
+
         if random.random() < mutation_rate:
-            individual.gene2 += random.uniform(-1, 1)
+            individual.D += random.uniform(-0.01, 0.01)
+            individual.D = max(self.min_diameter, min(individual.D, self.max_diameter))  # Garante que D esteja dentro dos limites
+
         if random.random() < mutation_rate:
-            individual.gene3 += random.uniform(-1, 1)
+            individual.B += random.randint(-1, 1)  # Como B é inteiro, usar randint é melhor
+            individual.B = max(self.min_blade_number, min(individual.B, self.max_blade_number))  # Garante que B esteja dentro dos limites
+            

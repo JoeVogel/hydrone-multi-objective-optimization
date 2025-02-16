@@ -8,19 +8,23 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-from evaluation.uiuc_surrogate_model    import UIUCSurrogateModel
-from evaluation.polynomial_evaluation   import PolynomialEvaluation
-from optimization.nsgaii                import NSGAII
+from evaluation.aerial_methods      import AerialBEMT
+from evaluation.aquatic_methods     import WaterBEMT
+from optimization.nsgaii            import NSGAII
 
 import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
 
-    # Initialize evaluation methods
-    aerial_evaluation = UIUCSurrogateModel()
-    aquatic_evaluation = PolynomialEvaluation()
+    alpha_values = [1, 3, 5, 7]  # Angulo de ataque
+    D_values = [0.2, 0.25, 0.3]  # Diâmetros da hélice (m)
+    B_values = [2, 3]  # Número de pás
     
-    optimizer = NSGAII(100, 500, aerial_evaluation, aquatic_evaluation)
+    # Initialize evaluation methods
+    aerial_evaluator = AerialBEMT()
+    aquatic_evaluator = WaterBEMT()
+    
+    optimizer = NSGAII(100, 500, aerial_evaluator, aquatic_evaluator)
     
     pareto_fronts = optimizer.run()
 

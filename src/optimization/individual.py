@@ -2,10 +2,10 @@
 class Individual():
     
     #TODO: define genes
-    def __init__(self, gene1, gene2, gene3):
-        self.gene1                  = gene1
-        self.gene2                  = gene2
-        self.gene3                  = gene3
+    def __init__(self, alpha, D, B):
+        self.alpha                  = alpha
+        self.D                      = D
+        self.B                      = B
         self.aerial_fitness         = None
         self.aquatic_fitness        = None
         self.rank                   = None
