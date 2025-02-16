@@ -9,8 +9,20 @@ class EvaluationMethod(ABC):
         self.fidelity_level = fidelity_level
     
     @abstractmethod
-    def evaluate(self, param1, param2, param3):
+    def evaluate(self, alpha, D, B, n=6000):
         
-        """Evaluate the given individual and return a fitness value."""
+        """
+        Calculates thrust, torque and efficinecy.
+        
+        Parameters:
+            alpha (float): Propeller angle of attack 0-10 (degrees). 
+            D (float): Propeller diameter (m).
+            B (int): Blade number.
+            n (int, optional): Propeller rotation in RPM (default: 6000)
+        
+        Returns:
+            tuple: propeller thrust (N), propeller torque (nM), propeller efficiency
+        
+        """
         pass
         
