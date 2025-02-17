@@ -48,15 +48,15 @@ class NSGAII:
             # Evaluate population
             for individual in population:
                 
-                aerial_T, aerial_Q, aerial_eta, aerial_re = self.aerial_evaluation_method.evaluate(individual.alpha, individual.D, individual.B)
+                aerial_T, aerial_Q, aerial_eta, aerial_re = self.aerial_evaluation_method.evaluate(individual.alpha, individual.D, individual.B, 5000)
                 individual.aerial_fitness = aerial_eta
                 
-                aquatic_T, aquatic_Q, aquatic_eta, aquatic_cav, aquatic_v_tip, aquatic_re = self.aquatic_evaluation_method.evaluate(individual.alpha, individual.D, individual.B)
+                aquatic_T, aquatic_Q, aquatic_eta, aquatic_cav, aquatic_v_tip, aquatic_re = self.aquatic_evaluation_method.evaluate(individual.alpha, individual.D, individual.B, 500)
                 individual.aquatic_fitness = aquatic_eta
 
             # Perform non-dominated sorting
             fronts = self._fast_non_dominated_sort(population)
-            
+
             # TODO: implementar max generations ou convergência
             if (generation == self.maximum_generations):
                 continue
@@ -66,7 +66,7 @@ class NSGAII:
                 self._crowding_distance(front)
 
             # Selection, crossover, and mutation
-            population = self._create_next_generation(population)
+            population = self._create_next_generation(population, fronts)
             
         return fronts
 
@@ -155,29 +155,6 @@ class NSGAII:
 
                 front[i].crowding_distance += (next_fitness - prev_fitness) / (max_value - min_value)
 
-    # def _dominates(self, individual1:Individual, individual2:Individual):
-    #     """
-    #     Checks if individual1 dominates individual2.
-    #     An individual dominates another if:
-    #     - It is better (lower value) in at least one objective
-    #     - It is not worse in any objective
-    #     """
-        
-    #     better_in_one = False
-
-    #     # Comparação para cada objetivo (fitness aéreo e fitness aquático)
-    #     if individual1.aerial_fitness < individual2.aerial_fitness:
-    #         better_in_one = True
-    #     elif individual1.aerial_fitness > individual2.aerial_fitness:
-    #         return False  # Se piora em algum objetivo, não domina
-
-    #     if individual1.aquatic_fitness < individual2.aquatic_fitness:
-    #         better_in_one = True
-    #     elif individual1.aquatic_fitness > individual2.aquatic_fitness:
-    #         return False  # Se piora em algum objetivo, não domina
-
-    #     return better_in_one
-    
     def _dominates(self, individual1: Individual, individual2: Individual):
         """
         Checks if individual1 dominates individual2.
@@ -201,24 +178,33 @@ class NSGAII:
 
         return better_in_one
 
-    def _create_next_generation(self, population):
+    def _create_next_generation(self, population, fronts):
         """
         Creates the next generation using tournament selection, crossover, and mutation.
         """
         next_generation = []
+        i = 0
 
-        # Perform tournament selection to choose parents
+        # Adicionar as frentes até que a população atinja o tamanho necessário
+        while i < len(fronts) and len(next_generation) + len(fronts[i]) <= self.population_size:
+            next_generation.extend(fronts[i])  # Adiciona a frente inteira
+            i += 1
+
+        # Se ainda falta espaço, ordenamos por crowding distance e completamos
+        remaining_spots = self.population_size - len(next_generation)
+        if remaining_spots > 0:
+            fronts[i].sort(key=lambda x: -x.crowding_distance)  # Ordem decrescente de crowding distance
+            next_generation.extend(fronts[i][:remaining_spots])  # Preenche com os melhores
+
+        # Aplicar torneio + crossover + mutação para gerar filhos até preencher a população
         while len(next_generation) < self.population_size:
             parent1 = self._tournament_selection(population)
             parent2 = self._tournament_selection(population)
 
-            # Apply crossover to generate a child
+            # Crossover e mutação
             child = self._crossover(parent1, parent2)
-
-            # Apply mutation to the child
             self._mutate(child)
 
-            # Add the child to the next generation
             next_generation.append(child)
 
         return next_generation
@@ -243,7 +229,7 @@ class NSGAII:
         child = Individual(
             alpha=(parent1.alpha + parent2.alpha) / 2,
             D=(parent1.D + parent2.D) / 2,
-            B=(parent1.B + parent2.B) / 2,
+            B=int((parent1.B + parent2.B) / 2),
         )
         return child
 

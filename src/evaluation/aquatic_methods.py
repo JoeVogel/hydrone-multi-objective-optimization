@@ -69,8 +69,8 @@ class WaterBEMT(EvaluationMethod):
         R = D / 2  # Raio da hélice (m)
         dr = R / self.N  # Tamanho do elemento
         
-        J = np.tan(np.radians(alpha))  # Razão de avanço
-        V = J * n * D  # Velocidade axial (m/s)
+        V=0 # velocidade axial (m/s) do fluxo que atravessa a hélice - V=0 = hovering
+        
         omega = 2 * np.pi * n / 60  # Velocidade angular (rad/s)
         
         dT_total = 0  # Empuxo total
@@ -117,11 +117,20 @@ class WaterBEMT(EvaluationMethod):
             cavitation_numbers.append(sigma_cav)
 
         # Coeficientes adimensionais
-        C_T = dT_total / (self.rho * (n * D)**2 * D**4)
-        C_Q = dQ_total / (self.rho * (n * D)**2 * D**5)
+        C_T = dT_total / (self.rho * n**2 * D**4)  # Coeficiente de empuxo
+        C_Q = dQ_total / (self.rho * n**2 * D**5)  # Coeficiente de torque
+        
+        J=0
+        
+        if V == 0:  # Hovering
+            A = np.pi * (D / 2) ** 2  # Área varrida pela hélice
+            V_induzida = np.sqrt(dT_total / (2 * self.rho * A))  # Velocidade induzida
+            J = V_induzida / (n * D)
+        else:
+            J = V / (n * D) # Calcula a razão de avanço a partir do ângulo de ataque
         
         # Eficiência da hélice
-        eta = (C_T * J) / (C_Q * 2 * np.pi) if C_Q != 0 else 0
+        eta = (C_T * J) / (C_Q * 2 * np.pi)
 
         # Velocidade da ponta da pá
         # A velocidade da ponta da pá é crítica para evitar erosão por cavitação

@@ -38,7 +38,7 @@ if __name__ == "__main__":
             y = [ind.aquatic_fitness for ind in front]  # Fitness Aquático (Y)
             
             plt.scatter(x, y, color=colors[i % len(colors)], label=f'Front {i+1}', alpha=0.7, edgecolors='k')
-
+            plt.title("Pareto Fronts - NSGA-II Optimization")
     else:
         
         # Extrai os valores de fitness para os eixos X e Y
@@ -46,10 +46,11 @@ if __name__ == "__main__":
         y = [ind.aquatic_fitness for ind in pareto_fronts[0]]  # Fitness Aquático (Y)
 
         plt.scatter(x, y, color='red', label='Front Pareto (F1)', alpha=0.8, edgecolors='k')
-
+        plt.title("Pareto Front - NSGA-II Optimization")
+        
     plt.xlabel("Fitness Aéreo")
     plt.ylabel("Fitness Aquático")
-    plt.title("Pareto Fronts - NSGA-II Optimization")
+    
     plt.legend()
     plt.grid(True)
     plt.show()
