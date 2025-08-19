@@ -8,25 +8,54 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-from evaluation.aerial_methods      import AerialBEMT
-from evaluation.aquatic_methods     import WaterBEMT
-from optimization.nsgaii            import NSGAII
+from scenario                   import Scenario
+from rotor                      import Rotor
+from evaluation.aerial_methods  import AerialBEMT
+from evaluation.aquatic_methods import WaterBEMT
 
 import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     
-    aerial_evaluator = AerialBEMT()
-    aquatic_evaluator = WaterBEMT()
-    
-    a = 5.0
-    D = 0.15
-    B = 2
+    diameter= 0.2
+    radius_hub = 0.0025
+    n_blades= 2
+    alpha=12
+    number_of_sections = 5
 
-    print("HYDRODYNAMICS")
-    T, Q, eta, cav, v_tip, re = aquatic_evaluator.evaluate(a, D, B, n=500)
-    print(f"alpha: {a:.2f}º, D: {D:.2f}m, B: {B} blades, Thrust: {T:.4f} N, Torque: {Q:.4f} Nm, Efficiency: {eta:.4f}, Tip speed: {v_tip:.1f} m/s, Cavitation: {cav:.4f}, Re: {re}")
+    rotor = Rotor(
+        n_blades=n_blades,
+        diameter=diameter,
+        radius_hub=radius_hub,
+        number_of_sections=number_of_sections,
+        foil_list=['NACA_4412'] * number_of_sections,
+        chord_list=[0.0152, 0.0136, 0.0120, 0.0104, 0.0088],
+        pitch_list=[alpha] * number_of_sections
+    )
 
-    print("AERODYNAMICS")
-    T, Q, eta, re = aerial_evaluator.evaluate(a, D, B, n=5000)
-    print(f"alpha: {a:.2f}º, D: {D:.2f}m, B: {B} blades, Thrust: {T:.4f} N, Torque: {Q:.4f} Nm, Efficiency: {eta:.4f}, Re: {re}")
+    # Evaluate in air
+    air_solver = AerialBEMT(
+        scenario=Scenario(rpm=1100.0, v_inf=1.0)
+    )
+
+    T, Q, P = air_solver.evaluate(rotor)
+
+    print("--- Results ---")
+    print("")
+    print("Evaluation Type: ", air_solver.type)
+    print("Thrust: ", T, "N")
+    print("Torque: ", Q, "Nm")
+    print("Power: ", P, "W")      
+    print("")
+
+    # Evaluate in water
+    watter_solver = WaterBEMT(
+        scenario=Scenario(rpm=180.0, v_inf=1.0)
+    )
+
+    T, Q, P = watter_solver.evaluate(rotor)     
+
+    print("Evaluation Type: ", watter_solver.type)
+    print("Thrust: ", T, "N")
+    print("Torque: ", Q, "Nm")          
+    print("Power: ", P, "W")    
