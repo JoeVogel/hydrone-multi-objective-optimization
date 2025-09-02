@@ -8,19 +8,27 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-from evaluation.aerial_methods      import AerialBEMT
-from evaluation.aquatic_methods     import WaterBEMT
-from optimization.nsgaii            import NSGAII
+from scenario                   import Scenario
+from rotor                      import Rotor
+from evaluation.aerial_methods  import AerialBEMT
+from evaluation.aquatic_methods import WaterBEMT
+from optimization.nsgaii        import NSGAII
 
 import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     
     # Initialize evaluation methods
-    aerial_evaluator = AerialBEMT()
-    aquatic_evaluator = WaterBEMT()
+    aerial_evaluator = AerialBEMT(
+        scenario=Scenario(rpm=8000.0, v_inf=1.0)
+    )
+
+    # 3700 RPM mantains tip speed below 39 m/s for 20 cm diameter propeller
+    aquatic_evaluator = WaterBEMT(
+        scenario=Scenario(rpm=3700.0, v_inf=1.0)
+    )
     
-    optimizer = NSGAII(100, 500, aerial_evaluator, aquatic_evaluator)
+    optimizer = NSGAII(30, 30, aerial_evaluator, aquatic_evaluator)
     
     pareto_fronts = optimizer.run()
 
