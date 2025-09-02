@@ -111,6 +111,8 @@ class Airfoil:
 
     def __init__(self):
         self.name = None
+
+        # single-Re (backward compatibility)
         self.alpha_ = None
         self.Cl_ = None
         self.Cd_ = None
@@ -118,9 +120,10 @@ class Airfoil:
         self.Cd_func = None
 
         # Multi-Re storage
-        self.re_list = []    # sorted list of Re (floats)
-        self._cl_funcs = {}  # Re -> interp1d(alpha_deg -> Cl)
-        self._cd_funcs = {}  # Re -> interp1d(alpha_deg -> Cd)
+        self.re_list = []       # sorted list of Re (floats)
+        self._cl_funcs = {}     # Re -> interp1d(alpha_deg -> Cl)
+        self._cd_funcs = {}     # Re -> interp1d(alpha_deg -> Cd)
+        self.default_Re = None  # chosen default Re when caller omits Re
 
         self.zero_lift = 0.0
         
@@ -137,57 +140,34 @@ class Airfoil:
     
     # ---------- Public API ----------
 
-    def Cd(self, alpha): 
+    def Cl(self, alpha, Re=None):
         """
-        Provide drag coefficent for a given angle of attack.
-
-        :param float alpha: Angle in radians
-        :return: Drag coefficient
-        :rtype: float
-        """
-        # NB! The stored data uses degrees for the angle
-        return self.Cd_func(-self.zero_lift + degrees(self._normalize_angle(alpha)))
-
-    def Cd(self, alpha, Re):
-        """
-        Lift coefficient at angle 'alpha' [rad].
-        Re is the Reynolds number. If multiple Re are available, the nearest Re table is used.
+        Lift coefficient at given angle of attack (in radians) and Reynolds number.
+        If multi-Re and Re is None, uses the default_Re (median of available Re).
+        If only single-Re data is available, Re is ignored.
+        :param float alpha: Angle of attack in radians
+        :param float Re: Reynolds number (optional)
         """
         alpha_deg = -self.zero_lift + degrees(self._normalize_angle(alpha))
-
-        if self.re_list:
-            if Re is None:
-                Re = self.re_list[len(self.re_list)//2]
-            return self._cd_alpha_re(alpha_deg, Re)
-
-        return float(self.Cd_func(alpha_deg))
-
-    def Cl(self, alpha):
-        """
-        Provide drag coefficent for a given angle of attack.
-
-        :param float alpha: Angle in radians
-        :return: Drag coefficient
-        :rtype: float
-        """
-        return self.Cl_func(-self.zero_lift + degrees(self._normalize_angle(alpha)))
-
-    def Cl(self, alpha, Re):
-        """
-        Lift coefficient at angle 'alpha' [rad].
-        Re is the Reynolds number. If multiple Re are available, the nearest Re table is used.
-        """
-        alpha_deg = -self.zero_lift + degrees(self._normalize_angle(alpha))
-
-        # Multi-Re available?
-        if self.re_list:
-            if Re is None:
-                # default: nearest Re
-                Re = self.re_list[len(self.re_list)//2]  # or pick the median Re
-            return self._cl_alpha_re(alpha_deg, Re)
-
-        # Fallback to single-Re
+        if self.re_list:  # multi-Re mode
+            use_Re = Re if Re is not None else (self.default_Re or self.re_list[len(self.re_list)//2])
+            return self._cl_alpha_re(alpha_deg, use_Re)   # Uses Re dictionary
+        # single-Re fallback
         return float(self.Cl_func(alpha_deg))
+
+    def Cd(self, alpha, Re=None):
+        """
+        Drag coefficient at given angle of attack (in radians) and Reynolds number.
+        If multi-Re and Re is None, uses the default_Re (median of available Re).
+        If only single-Re data is available, Re is ignored.
+        :param float alpha: Angle of attack in radians
+        :param float Re: Reynolds number (optional)
+        """
+        alpha_deg = -self.zero_lift + degrees(self._normalize_angle(alpha))
+        if self.re_list:
+            use_Re = Re if Re is not None else (self.default_Re or self.re_list[len(self.re_list)//2])
+            return self._cd_alpha_re(alpha_deg, use_Re)
+        return float(self.Cd_func(alpha_deg))
 
     # ---------- Internal helpers for multi-Re ----------
     def _cl_alpha_re(self, alpha_deg, Re):
@@ -344,7 +324,7 @@ def load_airfoil(name):
             cdf = interp1d(alpha_deg, Cd, kind='quadratic')
             a._cl_funcs[Re_val] = clf
             a._cd_funcs[Re_val] = cdf
-
+        a.default_Re = a.re_list[len(a.re_list)//2]  # pick median Re as default
         return a
 
     # Fallback: single-Re (nenhum arquivo tinha 'Reynolds number' no cabeçalho)
