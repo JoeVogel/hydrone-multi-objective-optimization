@@ -18,6 +18,10 @@ for a single airfoil, e.g.
 
     python airfoil.py NACA_4412 -180 180
 
+    or 
+
+    python airfoil.py NACA_4412 -180 180 100000
+
 """
 
 import os
