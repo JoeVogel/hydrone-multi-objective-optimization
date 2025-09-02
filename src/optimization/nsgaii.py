@@ -6,6 +6,7 @@ import pandas as pd
 
 from evaluation.evaluation_method   import EvaluationMethod
 from .individual                    import Individual
+from rotor                          import Rotor
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +33,15 @@ class NSGAII:
         
         self.min_alpha = df["min_alpha"][0]
         self.max_alpha = df["max_alpha"][0]
-        self.min_diameter = df["min_diameter"][0]
-        self.max_diameter = df["max_diameter"][0]
+        self.diameter = df["diameter"][0]
         self.min_blade_number = df["min_blade_num"][0]
         self.max_blade_number = df["max_blade_num"][0]
+        self.foil = df["foil"][0]
+        self.number_of_sections = df["number_of_sections"][0]
+
+        # TODO: definir chord_list e radius_hub como parâmetros de entrada ou calcular dinamicamente
+        self.chord_list = [0.0152, 0.0136, 0.0120, 0.0104, 0.0088]
+        self.radius_hub = 0.0025
 
     def run(self):
         """
@@ -47,11 +53,25 @@ class NSGAII:
 
             # Evaluate population
             for individual in population:
+
+                rotor = Rotor(
+                    n_blades=individual.B,
+                    diameter=individual.D,
+                    radius_hub=individual.radius_hub,
+                    number_of_sections=self.number_of_sections,
+                    foil_list=individual.foil_list,
+                    chord_list=individual.chord_list,
+                    pitch_list=individual.pitch_list
+                )
                 
-                aerial_T, aerial_Q, aerial_eta, aerial_re = self.aerial_evaluation_method.evaluate(individual.alpha, individual.D, individual.B, 5000)
+                aerial_T, aerial_Q, aerial_P, aerial_eta = self.aerial_evaluation_method.evaluate(rotor)
+
+                # TODO: define air fitness function
                 individual.aerial_fitness = aerial_eta
                 
-                aquatic_T, aquatic_Q, aquatic_eta, aquatic_cav, aquatic_v_tip, aquatic_re = self.aquatic_evaluation_method.evaluate(individual.alpha, individual.D, individual.B, 500)
+                aquatic_T, aquatic_Q, aquatic_P, aquatic_eta = self.aquatic_evaluation_method.evaluate(rotor)
+                
+                # TODO: define water fitness function
                 individual.aquatic_fitness = aquatic_eta
 
             # Perform non-dominated sorting
@@ -79,11 +99,17 @@ class NSGAII:
         random.seed(self.seed)
         
         for _ in range(self.population_size):
+
             individual = Individual(
-                alpha=random.uniform(self.min_alpha, self.max_alpha),
-                D=random.uniform(self.min_diameter, self.max_diameter),
-                B=random.uniform(self.min_blade_number, self.max_blade_number),
+                alpha=round(random.uniform(self.min_alpha, self.max_alpha), 1), # round para ter apenas 1 casa decimal
+                D=self.diameter,
+                B=random.randint(self.min_blade_number, self.max_blade_number),
+                chord_list=self.chord_list,  
+                foil=self.foil,
+                radius_hub=self.radius_hub,  
+                number_of_sections=self.number_of_sections  
             )
+
             population.append(individual)
         return population
 
@@ -226,11 +252,17 @@ class NSGAII:
         """
         Performs crossover between two parents to produce a child.
         """
+
         child = Individual(
             alpha=(parent1.alpha + parent2.alpha) / 2,
-            D=(parent1.D + parent2.D) / 2,
+            D=self.diameter,
             B=int((parent1.B + parent2.B) / 2),
+            chord_list=self.chord_list, # Assuming chord_list is the same for every individual
+            foil=self.foil, # Assuming chord_list is the same for every individual
+            radius_hub=self.radius_hub, # Assuming chord_list is the same for every individual
+            number_of_sections=self.number_of_sections # Assuming chord_list is the same for every individual
         )
+
         return child
 
     def _mutate(self, individual, mutation_rate=0.1):
@@ -241,10 +273,6 @@ class NSGAII:
         if random.random() < mutation_rate:
             individual.alpha += random.uniform(-0.1, 0.1)
             individual.alpha = max(self.min_alpha, min(individual.alpha, self.max_alpha))  # Garante que alpha esteja dentro dos limites
-
-        if random.random() < mutation_rate:
-            individual.D += random.uniform(-0.01, 0.01)
-            individual.D = max(self.min_diameter, min(individual.D, self.max_diameter))  # Garante que D esteja dentro dos limites
 
         if random.random() < mutation_rate:
             individual.B += random.randint(-1, 1)  # Como B é inteiro, usar randint é melhor

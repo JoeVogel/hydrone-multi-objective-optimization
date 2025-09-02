@@ -8,6 +8,25 @@ from configparser import NoOptionError
 from math import radians, degrees, sqrt, cos, sin, atan2, atan, pi, acos, exp
 from airfoil import load_airfoil
 
+# TODO: implement Raynolds number variation with fluid viscosity and density
+# The Reynolds number is a dimensionless value that measures the ratio of inertial forces to 
+# viscous forces and descibes the degree of laminar or turbulent flow. 
+# Systems that operate at the same Reynolds number will have the same flow 
+# characteristics even if the fluid, speed and characteristic lengths vary.
+
+# The Reynolds number is calculated from:
+
+# .. math::
+#     Re = rho U c / mu = U c / nu
+# where:
+# - :math:`rho` is the fluid density
+# - :math:`U` is the flow velocity
+# - :math:`c` is the characteristic length (chord length for airfoils)
+# - :math:`mu` is the dynamic viscosity of the fluid
+# - :math:`nu` is the kinematic viscosity of the fluid 
+
+# http://airfoiltools.com/calculator/reynoldsnumber
+
 class Rotor: 
     """
     Holds rotor properties and a list of all airfoil sections.

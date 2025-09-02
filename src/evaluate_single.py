@@ -38,14 +38,15 @@ if __name__ == "__main__":
         scenario=Scenario(rpm=1100.0, v_inf=1.0)
     )
 
-    T, Q, P = air_solver.evaluate(rotor)
+    T, Q, P, eta = air_solver.evaluate(rotor)
 
     print("--- Results ---")
     print("")
     print("Evaluation Type: ", air_solver.type)
     print("Thrust: ", T, "N")
     print("Torque: ", Q, "Nm")
-    print("Power: ", P, "W")      
+    print("Power: ", P, "W")     
+    print("Efficiency: ", eta) 
     print("")
 
     # Evaluate in water
@@ -53,9 +54,10 @@ if __name__ == "__main__":
         scenario=Scenario(rpm=180.0, v_inf=1.0)
     )
 
-    T, Q, P = watter_solver.evaluate(rotor)     
+    T, Q, P, eta = watter_solver.evaluate(rotor)     
 
     print("Evaluation Type: ", watter_solver.type)
     print("Thrust: ", T, "N")
     print("Torque: ", Q, "Nm")          
-    print("Power: ", P, "W")    
+    print("Power: ", P, "W")   
+    print("Efficiency: ", eta) 

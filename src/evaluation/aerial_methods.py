@@ -31,9 +31,9 @@ class AerialBEMT(EvaluationMethod):
         """ Avalia o desempenho do propulsor baseado no modelo BEMT para ambiente aéreo """
 
         T, Q, P, sec_df = self.solver.run(rotor)
-        # J,CT,CQ,CP,eta = self.solver.rotor_coeffs(T, Q, P)
+        J,CT,CQ,CP,eta = self.solver.rotor_coeffs(T, Q, P)
 
-        return T, Q, P
+        return T, Q, P, eta
         
         
     

@@ -23,13 +23,22 @@ class Fluid:
 
     def __init__(self, type: FluidType = FluidType.AIR):
 
+        # Kinematic viscosity (m²/s) is the ratio between dynamic viscosity (kg/m·s) and density (kg/m³).
+        # kinematic viscosity = dynamic viscosity / density
+
+        # rho = density (kg/m³)
+        # mu = dynamic viscosity (kg/m·s)
+        # nu = kinematic viscosity (m²/s)
+
         if (type == FluidType.AIR):
-            self.rho = 1.225  # Densidade do ar (kg/m³)
-            self.mu = 1.81e-5  # Viscosidade dinâmica do ar (kg/m.s)
+            self.rho = 1.225  
+            self.mu = 1.81e-5  
         elif (type == FluidType.WATER):
-            self.rho = 997.0  # Densidade da água (kg/m³)
-            self.mu = 8.9e-4  # Viscosidade dinâmica da água (kg/m.s)
+            self.rho = 997.0  
+            self.mu = 8.9e-4  
         else:
             raise ValueError(f"Unsupported fluid type: {type}")
+        
+        self.nu = self.mu / self.rho
 
 
