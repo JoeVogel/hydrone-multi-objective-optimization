@@ -28,7 +28,7 @@ class Solver:
 
         # Fluid
         self.fluid = fluid
-
+        
         # Solver
         self.solver = 'bisect'  # Default solver method, can be 'brute' or 'bisect'
 
@@ -42,11 +42,11 @@ class Solver:
         Dimensionless coefficients for a rotor. 
 
         .. math::
-            \\text{J} = \\frac{V_\\infty}{nD} \\\\
-            C_T = \\frac{T}{\\rho n^2 D^4} \\\\
-            C_Q = \\frac{Q}{\\rho n^2 D^5} \\\\
-            C_P = 2\\pi C_Q \\\\
-            \\eta = \\frac{C_T}{C_P}J \\\\
+            J   = V_inf / (n * D)
+            C_T = T / (rho * n^2 * D^4)
+            C_Q = Q / (rho * n^2 * D^5)
+            C_P = 2π * C_Q
+            eta = (C_T / C_P) * J
 
         :param float T: Thrust
         :param float Q: Torque
@@ -88,22 +88,32 @@ class Solver:
         # Angular momentum
         Q = 0.0
 
+        r_cut = self.rotor.blade_radius * 0.20  # 20% do raio
+
         for sec in rotor.sections:
+
+            # TODO: encontrar literatura que justifique esse corte de 20% no miolo para BEMT
+            if sec.radius < r_cut:
+                continue  # não computa forças no miolo
 
             if sec.radius < rotor.blade_radius:
                 v = scenario.v_inf
             else:
                 v = 0.0
-                
+
+            phi_lo = 0.04*np.pi # 7.2 degrees
+            phi_hi = 0.13*np.pi # 23.4 degrees
+
+            # Find inflow angle
             if self.solver == 'brute':
-                phi = self.brute_solve(sec, v, omega)
+                phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
             else:
                 try:
-                    phi = optimize.bisect(sec.func, 0.01*pi, 0.9*pi, args=(v, omega))
+                    phi = optimize.bisect(sec.func, phi_lo, phi_hi, args=(v, omega))
                 except ValueError as e:
                     print(e)
                     print('Bisect failed, switching to brute solver')
-                    phi = self.brute_solve(sec, v, omega)
+                    phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
 
             
             dT, dQ = sec.forces(phi, v, omega, self.fluid)
@@ -129,7 +139,7 @@ class Solver:
         
         return self.T, self.Q, self.P, self.rotor.sections_dataframe()
 
-    def brute_solve(self, sec, v, omega, n=3600):
+    def brute_solve(self, sec, v, omega, n=3600, phi_lo=None, phi_hi=None):
         """ 
         Solve by a simple brute force procedure, iterating through all
         possible angles and selecting the one with lowest residual.
@@ -138,11 +148,17 @@ class Solver:
         :param float v: Axial inflow velocity
         :param float omega: Tangential rotational velocity
         :param int n: Number of angles to test for, optional
+        :param tuple phi_bounds: Tuple with lower and upper bounds for inflow angle, optional
         :return: Inflow angle with lowest residual
         :rtype: float
         """
         resid = np.zeros(n)
-        phis = np.linspace(-0.9*np.pi,0.9*np.pi,n)
+
+        if (phi_lo is not None) and (phi_hi is not None):
+            phis = np.linspace(phi_lo, phi_hi, n)
+        else:
+            phis = np.linspace(-0.49*np.pi, 0.49*np.pi, n)
+
         for i,phi in enumerate(phis):
             res = sec.func(phi, v, omega)
             if not np.isnan(res):

@@ -4,9 +4,9 @@ import logging
 
 import pandas as pd
 
-from evaluation.evaluation_method   import EvaluationMethod
-from .individual                    import Individual
-from rotor                          import Rotor
+from evaluation.evaluation_method import EvaluationMethod
+from .individual                  import Individual
+from rotor                        import Rotor
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,12 @@ class NSGAII:
         self.number_of_sections = df["number_of_sections"][0]
 
         # TODO: definir chord_list e radius_hub como parâmetros de entrada ou calcular dinamicamente
-        self.chord_list = [0.0152, 0.0136, 0.0120, 0.0104, 0.0088]
+        self.chord_list = [
+            0.01700, 0.01660, 0.01620, 0.01580, 0.01540,
+            0.01500, 0.01440, 0.01380, 0.01320, 0.01260,
+            0.01220, 0.01180, 0.01140, 0.01100, 0.01060,
+            0.01020, 0.00980, 0.00940, 0.00900, 0.00860
+            ]
         self.radius_hub = 0.0025
 
     def run(self):
@@ -64,12 +69,12 @@ class NSGAII:
                     pitch_list=individual.pitch_list
                 )
                 
-                aerial_T, aerial_Q, aerial_P, aerial_eta = self.aerial_evaluation_method.evaluate(rotor)
+                aerial_T, aerial_Q, aerial_P, aerial_J, aerial_CT, aerial_CQ, aerial_CP, aerial_eta = self.aerial_evaluation_method.evaluate(rotor)
 
                 # TODO: define air fitness function
                 individual.aerial_fitness = aerial_eta
                 
-                aquatic_T, aquatic_Q, aquatic_P, aquatic_eta = self.aquatic_evaluation_method.evaluate(rotor)
+                aquatic_T, aquatic_Q, aquatic_P, aquatic_J, aquatic_CT, aquatic_CQ, aquatic_CP, aquatic_eta = self.aquatic_evaluation_method.evaluate(rotor)
                 
                 # TODO: define water fitness function
                 individual.aquatic_fitness = aquatic_eta

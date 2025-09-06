@@ -13,7 +13,7 @@ class Scenario:
     :param float twist: Twist angle in degrees (default is 0.0)  
     """
     
-    def __init__(self, rpm, v_inf):
-        self.rpm = 1100.0  # RPM of the propeller
-        self.v_inf = 1.0  # Freestream velocity in m/s
-        self.twist = 0.0  # Twist angle in degrees
+    def __init__(self, rpm, v_inf, twist=0.0):
+        self.rpm = rpm
+        self.v_inf = v_inf
+        self.twist = twist 
