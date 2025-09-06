@@ -69,15 +69,23 @@ class NSGAII:
                     pitch_list=individual.pitch_list
                 )
                 
-                aerial_T, aerial_Q, aerial_P, aerial_J, aerial_CT, aerial_CQ, aerial_CP, aerial_eta = self.aerial_evaluation_method.evaluate(rotor)
+                try:
+                    aerial_T, aerial_Q, aerial_P, aerial_J, aerial_CT, aerial_CQ, aerial_CP, aerial_eta = self.aerial_evaluation_method.evaluate(rotor)
 
-                # TODO: define air fitness function
-                individual.aerial_fitness = aerial_eta
+                    # TODO: define air fitness function
+                    individual.aerial_fitness = aerial_eta
+                except Exception as e:
+                    logger.debug(f"[NSGA] Aerial eval failed for individual: {e}")
+                    individual.aerial_fitness = 0.0  # penalização
                 
-                aquatic_T, aquatic_Q, aquatic_P, aquatic_J, aquatic_CT, aquatic_CQ, aquatic_CP, aquatic_eta = self.aquatic_evaluation_method.evaluate(rotor)
-                
-                # TODO: define water fitness function
-                individual.aquatic_fitness = aquatic_eta
+                try:
+                    aquatic_T, aquatic_Q, aquatic_P, aquatic_J, aquatic_CT, aquatic_CQ, aquatic_CP, aquatic_eta = self.aquatic_evaluation_method.evaluate(rotor)
+                    
+                    # TODO: define water fitness function
+                    individual.aquatic_fitness = aquatic_eta
+                except Exception as e:
+                    logger.debug(f"[NSGA] Aquatic eval failed for individual: {e}")
+                    individual.aquatic_fitness = 0.0  # penalização
 
             # Perform non-dominated sorting
             fronts = self._fast_non_dominated_sort(population)

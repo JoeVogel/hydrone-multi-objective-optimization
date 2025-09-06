@@ -320,8 +320,8 @@ def load_airfoil(name):
         with_re.sort(key=lambda t: t[0])
         a.re_list = [t[0] for t in with_re]
         for Re_val, alpha_deg, Cl, Cd in with_re:
-            clf = interp1d(alpha_deg, Cl, kind='quadratic')
-            cdf = interp1d(alpha_deg, Cd, kind='quadratic')
+            clf = interp1d(alpha_deg, Cl, kind='quadratic', bounds_error=False, fill_value='extrapolate')
+            cdf = interp1d(alpha_deg, Cd, kind='quadratic', bounds_error=False, fill_value='extrapolate')
             a._cl_funcs[Re_val] = clf
             a._cd_funcs[Re_val] = cdf
         a.default_Re = a.re_list[len(a.re_list)//2]  # pick median Re as default

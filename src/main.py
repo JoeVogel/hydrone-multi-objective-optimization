@@ -14,7 +14,9 @@ from evaluation.aerial_methods  import AerialBEMT
 from evaluation.aquatic_methods import WaterBEMT
 from optimization.nsgaii        import NSGAII
 
+import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import cm
 
 if __name__ == "__main__":
     
@@ -28,38 +30,52 @@ if __name__ == "__main__":
         scenario=Scenario(rpm=400.0, v_inf=0.3)
     )
     
-    optimizer = NSGAII(30, 30, aerial_evaluator, aquatic_evaluator)
+    optimizer = NSGAII(20, 50, aerial_evaluator, aquatic_evaluator)
     
     pareto_fronts = optimizer.run()
 
+
     # Plot Pareto fronts
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(9, 6))
 
-    colors = ['blue', 'green', 'red', 'purple', 'orange', 'brown', 'pink', 'gray']  # Cores para os fronts
+    cmap = cm.get_cmap("tab10")  # paleta com bom contraste
+    markers = ["o", "s", "D", "^", "v", "P", "X", "*"]  # alterna marcadores
 
-    all_fronts = False
+    show_all_fronts = False
 
-    if all_fronts:
-
+    if show_all_fronts:
         for i, front in enumerate(pareto_fronts):
-            x = [ind.aerial_fitness for ind in front]   # Fitness Aéreo (X)
-            y = [ind.aquatic_fitness for ind in front]  # Fitness Aquático (Y)
-            
-            plt.scatter(x, y, color=colors[i % len(colors)], label=f'Front {i+1}', alpha=0.7, edgecolors='k')
-            plt.title("Pareto Fronts - NSGA-II Optimization")
+            x = np.array([ind.aerial_fitness for ind in front])
+            y = np.array([ind.aquatic_fitness for ind in front])
+
+            order = np.argsort(x)
+            x_sorted, y_sorted = x[order], y[order]
+
+            color = cmap(i % cmap.N)
+            marker = markers[i % len(markers)]
+
+            plt.plot(x_sorted, y_sorted, lw=1.5, alpha=0.7, color=color)
+            plt.scatter(x, y, s=60, marker=marker,
+                        facecolors=color, edgecolors="black", linewidths=0.6,
+                        alpha=0.9, label=f"Front {i+1}")
     else:
-        
-        # Extrai os valores de fitness para os eixos X e Y
-        x = [ind.aerial_fitness for ind in pareto_fronts[0]]   # Fitness Aéreo (X)
-        y = [ind.aquatic_fitness for ind in pareto_fronts[0]]  # Fitness Aquático (Y)
+        f1 = pareto_fronts[0]
+        x = np.array([ind.aerial_fitness for ind in f1])
+        y = np.array([ind.aquatic_fitness for ind in f1])
 
-        plt.scatter(x, y, color='red', label='Front Pareto (F1)', alpha=0.8, edgecolors='k')
-        plt.title("Pareto Front - NSGA-II Optimization")
-        
-    plt.xlabel("Fitness Aéreo")
-    plt.ylabel("Fitness Aquático")
-    
-    plt.legend()
-    plt.grid(True)
+        order = np.argsort(x)
+        x_sorted, y_sorted = x[order], y[order]
+
+        plt.plot(x_sorted, y_sorted, lw=1.5, alpha=0.7, color="blue")
+        plt.scatter(x, y, s=60, marker="o",
+                    facecolors="blue", edgecolors="black", linewidths=0.6,
+                    alpha=0.9, label="Front 1")
+
+    plt.title("Frentes de Pareto — NSGA-II", pad=10)
+    plt.xlabel("Fitness Aéreo (ηₐ)")
+    plt.ylabel("Fitness Aquático (η𝑤)")
+    plt.grid(True, which="both", ls=":", lw=0.8, alpha=0.6)
+
+    plt.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
+    plt.tight_layout()
     plt.show()
-

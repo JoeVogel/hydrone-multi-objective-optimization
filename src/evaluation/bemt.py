@@ -101,20 +101,38 @@ class Solver:
             else:
                 v = 0.0
 
-            phi_lo = 0.04*np.pi # 7.2 degrees
-            phi_hi = 0.13*np.pi # 23.4 degrees
+            phi_lo = radians(5.0)  # degrees
+            phi_hi = radians(30.0) # degrees
 
             # Find inflow angle
+            # if self.solver == 'brute':
+            #     phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
+            # else:
+            #     try:
+            #         phi = optimize.bisect(sec.func, phi_lo, phi_hi, args=(v, omega))
+            #     except ValueError as e:
+            #         print(e)
+            #         print('Bisect failed, switching to brute solver')
+            #         phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
+
             if self.solver == 'brute':
                 phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
             else:
-                try:
-                    phi = optimize.bisect(sec.func, phi_lo, phi_hi, args=(v, omega))
-                except ValueError as e:
-                    print(e)
-                    print('Bisect failed, switching to brute solver')
+                a_b = self._try_bracket(sec, v, omega, phi_lo, phi_hi)
+                if a_b != (None, None):
+                    a, b = a_b
+                    try:
+                        phi = optimize.bisect(sec.func, a, b, args=(v, omega))
+                    except Exception as e:
+                        # Falhou bisect: usa brute como fallback
+                        # print(e)
+                        print('Bisect failed, switching to brute solver')
+                        phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
+                        phi = self._refine_with_secant(sec, v, omega, phi, ddeg=1.0, iters=2)
+                else:
+                    # Não achou bracket → brute direto
                     phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
-
+                    phi = self._refine_with_secant(sec, v, omega, phi, ddeg=1.0, iters=2)
             
             dT, dQ = sec.forces(phi, v, omega, self.fluid)
 
@@ -167,3 +185,70 @@ class Solver:
                 resid[i] = 1e30
         i = np.argmin(abs(resid))
         return phis[i]
+    
+    def _try_bracket(self, sec, v, omega, phi_lo, phi_hi):
+        """
+        Try to obtain (a,b) with sign change for sec.func inside [phi_lo, phi_hi].
+        First tests the original edges; if it fails, expands around phi0 = atan2(v, omega*r).
+        :param Section sec: Section to solve for
+        :param float v: Axial inflow velocity
+        :param float omega: Tangential rotational velocity
+        :param float phi_lo: Lower bound for inflow angle
+        :param float phi_hi: Upper bound for inflow angle
+        :return: Tuple (a,b) with sign change, or (None,None) if it fails
+        :rtype: tuple
+        """
+        def sgn(x):
+            return np.sign(x) if np.isfinite(x) else 0.0
+
+        # 1) testa bordas originais
+        f_lo = sec.func(phi_lo, v, omega)
+        f_hi = sec.func(phi_hi, v, omega)
+        if sgn(f_lo) * sgn(f_hi) < 0:
+            return phi_lo, phi_hi
+
+        # 2) centro geométrico
+        r = sec.radius
+        if omega * r <= 1e-12:
+            return (None, None)
+        phi0 = np.arctan2(v, omega * r)
+
+        # 3) expande simetricamente ao redor de phi0, mas SEM sair de [phi_lo, phi_hi]
+        # passos de 1.5°, 3°, 6°, 12°...
+        for k in range(8):
+            d = np.deg2rad(1.5 * (2 ** k))
+            a = np.clip(phi0 - d, phi_lo, phi_hi)
+            b = np.clip(phi0 + d, phi_lo, phi_hi)
+            fa = sec.func(a, v, omega)
+            fb = sec.func(b, v, omega)
+            if sgn(fa) * sgn(fb) < 0:
+                return a, b
+
+        return (None, None)
+    
+    def _refine_with_secant(self, sec, v, omega, phi_star, ddeg=1.0, iters=2):
+        """
+        Refine a phi_star estimate with up to 'iters' secant steps,
+        using samples at +/- ddeg degrees around it.
+        """
+        d = np.deg2rad(ddeg)
+        a = phi_star - d
+        b = phi_star + d
+        fa = sec.func(a, v, omega)
+        fb = sec.func(b, v, omega)
+
+        if not (np.isfinite(fa) and np.isfinite(fb)):
+            return phi_star
+        if np.sign(fa) == np.sign(fb):
+            return phi_star  # sem bracket local -> deixa como está
+
+        for _ in range(iters):
+            if abs(fb - fa) < 1e-14:
+                break
+            c = b - fb * (b - a) / (fb - fa)
+            fc = sec.func(c, v, omega)
+            a, fa = b, fb
+            b, fb = c, fc
+            if not np.isfinite(fb):
+                break
+        return b
