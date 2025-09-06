@@ -20,12 +20,12 @@ if __name__ == "__main__":
     
     # Initialize evaluation methods
     aerial_evaluator = AerialBEMT(
-        scenario=Scenario(rpm=8000.0, v_inf=1.0)
+        scenario=Scenario(rpm=4000.0, v_inf=3.0)
     )
 
     # 3700 RPM mantains tip speed below 39 m/s for 20 cm diameter propeller
     aquatic_evaluator = WaterBEMT(
-        scenario=Scenario(rpm=3700.0, v_inf=1.0)
+        scenario=Scenario(rpm=400.0, v_inf=0.3)
     )
     
     optimizer = NSGAII(30, 30, aerial_evaluator, aquatic_evaluator)

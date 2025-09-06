@@ -331,8 +331,8 @@ def load_airfoil(name):
     if defaults:
         alpha_deg, Cl, Cd = defaults[0]
         a.alpha_, a.Cl_, a.Cd_ = alpha_deg, Cl, Cd
-        a.Cl_func = interp1d(a.alpha_, a.Cl_, kind='quadratic')
-        a.Cd_func = interp1d(a.alpha_, a.Cd_, kind='quadratic')
+        a.Cl_func = interp1d(a.alpha_, a.Cl_, kind='quadratic', bounds_error=False, fill_value='extrapolate')
+        a.Cd_func = interp1d(a.alpha_, a.Cd_, kind='quadratic', bounds_error=False, fill_value='extrapolate')
         return a
 
     raise FileNotFoundError(f'No usable polar files for airfoil {name}')

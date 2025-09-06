@@ -4,28 +4,11 @@
 Module for storing rotor properties and calculation of induction factors and forces for the airfoil sections.
 """
 import pandas as pd
+import numpy as np
 from configparser import NoOptionError
 from math import radians, degrees, sqrt, cos, sin, atan2, atan, pi, acos, exp
 from airfoil import load_airfoil
 
-# TODO: implement Raynolds number variation with fluid viscosity and density
-# The Reynolds number is a dimensionless value that measures the ratio of inertial forces to 
-# viscous forces and descibes the degree of laminar or turbulent flow. 
-# Systems that operate at the same Reynolds number will have the same flow 
-# characteristics even if the fluid, speed and characteristic lengths vary.
-
-# The Reynolds number is calculated from:
-
-# .. math::
-#     Re = rho U c / mu = U c / nu
-# where:
-# - :math:`rho` is the fluid density
-# - :math:`U` is the flow velocity
-# - :math:`c` is the characteristic length (chord length for airfoils)
-# - :math:`mu` is the dynamic viscosity of the fluid
-# - :math:`nu` is the kinematic viscosity of the fluid 
-
-# http://airfoiltools.com/calculator/reynoldsnumber
 
 class Rotor: 
     """
@@ -49,13 +32,13 @@ class Rotor:
         s = foil_list
         c = chord_list
         r = centers
-        self.n_sections = len(s)
         
-        dr = self.n_sections*[float(r[1]) - float(r[0])]
+        S  = self.blade_radius - self.radius_hub
+        dr = [S / self.number_of_sections] * self.number_of_sections
         
         self.alpha = pitch_list
         self.sections = []
-        for i in range(self.n_sections): 
+        for i in range(self.number_of_sections): 
             sec = Section(load_airfoil(s[i]), float(r[i]), float(dr[i]), radians(self.alpha[i]), float(c[i]), self)
             self.sections.append(sec)
         
@@ -71,19 +54,13 @@ class Rotor:
         :rtype: tuple (list, list)
         """
         self.tip_radius = self.diameter / 2.0  # Tip radius of the propeller
-        self.blade_radius = 0.5*self.diameter       
+        self.blade_radius = self.tip_radius      
 
-        frontiers = []
-        centers = []
+        S = self.blade_radius - self.radius_hub  # usable span
+        N = self.number_of_sections
 
-        # Calculate the sections
-        for i in range(self.number_of_sections):
-            frontier = self.radius_hub + (i + 1) * self.blade_radius / self.number_of_sections
-            center = self.radius_hub + (i + 0.5) * self.blade_radius / self.number_of_sections
-
-            frontiers.append(frontier)
-            centers.append(center)
-
+        frontiers = [self.radius_hub + (i+1)*S/N for i in range(N)]
+        centers   = [self.radius_hub + (i+0.5)*S/N for i in range(N)]
         return frontiers, centers
 
     def precalc(self, twist):
@@ -162,35 +139,55 @@ class Section:
 
     def tip_loss(self, phi):
         """
-        Prandtl tip loss factor, defined as
-
-        .. math::
-            F = \\frac{2}{\\pi}\\cos^{-1}e^{-f} \\\\
-            f = \\frac{B}{2}\\frac{R-r}{r\\sin\\phi}
-
-        A hub loss is also caluclated in the same manner.
-
-        :param float phi: Inflow angle
-        :return: Combined tip and hub loss factor
-        :rtype: float
+        Prandtl tip + hub loss factor.
+        Equations (scalar notation):
+            F = (2/pi) * arccos( exp(-f) )
+            f_tip = (B/2) * (R - r) / (r * |sin(phi)|)
+            f_hub = (B/2) * (r - r_hub) / (r * |sin(phi)|)
+        Returns F = F_tip * F_hub
         """
-        def prandtl(dr, r, phi):
-            f = self.rotor.n_blades*dr/(2*r*(sin(phi)))
-            if (-f > 500): # exp can overflow for very large numbers
-                F = 1.0
-            else:
-                F = 2*acos(min(1.0, exp(-f)))/pi
-                
-            return F
+        B   = self.rotor.n_blades
+        r   = self.radius
+        R   = self.rotor.blade_radius
+        rh  = self.rotor.radius_hub
+
+        # Numerical guard rails
+        eps_sin = 1e-12
+        eps_r   = 1e-12
+
+        # Use |sin(phi)| to avoid negative f when phi < 0
+        s = abs(sin(phi))
+        s = max(s, eps_sin)
+        r_eff = max(r, eps_r)
+
+        def prandtl(dr, r_local, s_local):
+            """
+            One-sided Prandtl factor for either tip (dr = R - r) or hub (dr = r - r_hub).
+            """
+            # If dr <= 0, no loss from that side
+            if dr <= 0.0:
+                return 1.0
+
+            # f = (B/2) * dr / (r * |sin(phi)|)
+            f = (B * dr) / (2.0 * r_local * s_local)
+
+            # Avoid overflow/underflow in exp(-f) and keep acos argument valid
+            # For f >= ~40, exp(-f) ~ 4e-18 -> arccos(0) ~ pi/2 => F ~ 1
+            f = min(f, 60.0)  # safe upper cap
+            z = np.exp(-f)
+            z = float(np.clip(z, 0.0, 1.0))
+
+            F_one_side = (2.0/pi) * acos(z)
+            # Avoid exactly zero (would cause singularities downstream)
+            return float(np.clip(F_one_side, 1e-4, 1.0))
         
-        if phi == 0:
-            F = 1.0
-        else:    
-            r = self.radius
-            Ftip = prandtl(self.rotor.blade_radius - r, r, phi)
-            Fhub = prandtl(r - self.rotor.radius_hub, r, phi)
-            F = Ftip*Fhub
-            
+        # Tip and hub components
+        F_tip = prandtl(R - r_eff, r_eff, s)
+        F_hub = prandtl(r_eff - rh, r_eff, s)
+
+        F = F_tip * F_hub
+        F = float(np.clip(F, 1e-4, 1.0))
+
         self.F = F
         return F
     
@@ -210,8 +207,8 @@ class Section:
                      }
 
         .. math::
-            Cl_3D = Cl_2D + a (c / r)^h \cos^n{twist} (Cl_inv - Cl_2d) \\
-            Cl_inv = \sqrt{Cl_2d^2 + Cd^2}
+            Cl_3D = Cl_2D + a (c / r)^h \\cos^n{twist} (Cl_inv - Cl_2d) \\
+            Cl_inv = \\sqrt{Cl_2d^2 + Cd^2}
         where:
         a = 2.2, h = 1.3 and n = 4
 
@@ -229,7 +226,7 @@ class Section:
         n = 4
         return Cl + a * (c / r) ** h * (cos(twist)) ** n * (Cl_inv - Cl)
                 
-    def airfoil_forces(self, phi):
+    def airfoil_forces(self, phi, Re):
         """
         Force coefficients on an airfoil, decomposed in axial and tangential directions:
 
@@ -241,6 +238,7 @@ class Section:
         airfoil tables.
 
         :param float phi: Inflow angle
+        :param float Re: Reynolds number
         :return: Axial and tangential force coefficients
         :rtype: tuple
         """
@@ -249,8 +247,8 @@ class Section:
 
         alpha = C*(self.pitch - phi)
                 
-        Cl = self.airfoil.Cl(alpha)
-        Cd = self.airfoil.Cd(alpha)
+        Cl = self.airfoil.Cl(alpha, Re)
+        Cd = self.airfoil.Cd(alpha, Re)
                 
         CT = Cl*cos(phi) - C*Cd*sin(phi)
         CQ = Cl*sin(phi) + C*Cd*cos(phi)
@@ -261,17 +259,18 @@ class Section:
         
         return CT, CQ
     
-    def induction_factors(self, phi):
+    def induction_factors(self, phi, Re=None):
         """
-        Calculation of axial and tangential induction factors,
+        Axial (a) and tangential (a') induction factors per pyBEMT:
 
         .. math::
-            a = \\frac{1}{\\kappa - C} \\\\
-            a\' = \\frac{1}{\\kappa\' + C} \\\\
-            \\kappa = \\frac{4F\\sin^2{\\phi}}{\\sigma C_T} \\\\
-            \\kappa\' = \\frac{4F\\sin{\\phi}\\cos{\\phi}}{\\sigma C_Q} \\\\
+            kappa  = 4 F sin^2(phi)            / (sigma * C_T)
+            kappap = 4 F sin(phi) cos(phi)     / (sigma * C_Q)
+            a  = 1 / (kappa  - C)
+            ap = 1 / (kappap + C)
             
         :param float phi: Inflow angle
+        :param float Re: Reynolds number
         :return: Axial and tangential induction factors
         :rtype: tuple
         """
@@ -279,15 +278,36 @@ class Section:
         C = self.C
         
         F = self.tip_loss(phi)
+        CT, CQ = self.airfoil_forces(phi, Re)
         
-        CT, CQ = self.airfoil_forces(phi)
-        
-        kappa = 4*F*sin(phi)**2/(self.sigma*CT)
-        kappap = 4*F*sin(phi)*cos(phi)/(self.sigma*CQ)
+        s = sin(phi)
+        c = cos(phi)
 
-        a = 1.0/(kappa - C)
-        ap = 1.0/(kappap + C)
+        kappa  = 4.0 * F * (s ** 2) / (self.sigma * CT)
+        kappap = 4.0 * F * s * c / (self.sigma * CQ)
+
+        a = 1.0 / (kappa  - C)
+        ap = 1.0 / (kappap + C)
+
+        """ 
+        Usual values are 
+            a = 0 <= a < 0.5  
+            ap = 0 <= ap < 0.2 (can be ~0.3 in some cases) Higher than 0.5 is not physical
+
+        If a >= 0.5, use Glauert correction for high thrust (see e.g. Leishman, "Principles of Helicopter Aerodynamics", 2006)
+
+        if a >= 0.5:
+            CT = self.sigma * CT
+            a = 0.143 + sqrt(0.0203 - 0.6427*(0.889 - CT))
+            # ap = 0.0  # usually small, ignore for now
         
+        # Guard-rails
+        a = [0.0, 0.5] the negative are just for tolerate some numerical noise
+        ap = [0.0, 0.5]
+        """
+        a  = float(np.clip(a,  0.0, 0.5))
+        ap = float(np.clip(ap, 0.0, 0.5))
+
         return a, ap
         
     def func(self, phi, v_inf, omega):
@@ -295,7 +315,9 @@ class Section:
         Residual function used in root-finding functions to find the inflow angle for the current section.
 
         .. math::
-            \\frac{\\sin\\phi}{1+Ca} - \\frac{V_\\infty\\cos\\phi}{\\Omega R (1 - Ca\')} = 0\\\\
+            \\frac{\\sin\\phi}{1+Ca} - \\frac{V_\\infty\\cos\\phi}{\\Omega r (1 - Ca\')} = 0\\\\
+
+        We evaluate an algebraically equivalent residual without divisions to improve numerical robustness.
 
         :param float phi: Estimated inflow angle
         :param float v_inf: Axial inflow velocity
@@ -308,16 +330,23 @@ class Section:
 
         a, ap = self.induction_factors(phi)
         
-        resid = sin(phi)/(1 + C*a) - v_inf*cos(phi)/(omega*self.radius*(1 - C*ap))
-        
-        self.a = a
+        r = self.radius
+
+        # Algebraically equivalent residual (no divisions):
+        # sin(phi)/(1+Ca) - Vinf*cos(phi)/(omega*r*(1 - C ap)) = 0
+        #  =>  (omega*r)*(1 - C ap)*sin(phi) - Vinf*(1 + C a)*cos(phi) = 0
+        term1 = (omega * r) * (1.0 - C*ap) * np.sin(phi)
+        term2 = v_inf * (1.0 + C*a) * np.cos(phi)
+        resid = term1 - term2
+
+        self.a  = a
         self.ap = ap
-        
         return resid
     
-    def forces(self, phi, v_inf, omega, fluid):
+    def forces(self, phi, v_inf, omega, fluid, max_iter=4, tol=1e-5):
         """
-        Calculation of axial and tangential forces (thrust and torque) on airfoil section. 
+        Compute dT and dQ for the section at given phi, including a short
+        local fixed-point iteration to couple Re -> (Cl,Cd) -> (a,a').
 
         The definition of blade element theory is used,
 
@@ -339,6 +368,8 @@ class Section:
         :param float v_inf: Axial inflow velocity
         :param float omega: Tangential rotational velocity
         :param Fluid fluid: Fluid 
+        :param int max_iter: Maximum number of iterations for induction factor convergence
+        :param float tol: Tolerance for induction factor convergence
         :return: Axial and tangential forces
         :rtype: tuple
         """
@@ -346,15 +377,57 @@ class Section:
         C = self.C
         r = self.radius
         rho = fluid.rho
+        mu  = fluid.mu
+        s = sin(phi)
+        c = cos(phi)
         
-        a, ap = self.induction_factors(phi)
-        CT, CQ = self.airfoil_forces(phi)
+        # First guess:
+        a, ap = 0.0, 0.0
+
+        Re_prev = None
+        for _ in range(max_iter):
+            # velocidades locais com a, a' correntes
+            v  = (1 + C*a)  * v_inf
+            vp = (1 - C*ap) * omega * r
+            U  = sqrt(v**2 + vp**2)
+
+            # Reynolds local
+            Re = (rho * U * self.chord) / mu
+            self.v_rel = U
+            self.Re    = Re
+
+            # coeficientes com Re
+            CT, CQ = self.airfoil_forces(phi, Re=Re)
+
+            # reavalia a, a' com CT, CQ (Re-aware)
+            F = self.tip_loss(phi)
+
+            kappa  = 4.0 * F * (s ** 2) / (self.sigma * CT)
+            kappap = 4.0 * F * s * c / (self.sigma * CQ)
+
+            a_new  = 1.0/(kappa  - C)
+            ap_new = 1.0/(kappap + C)
+
+            a_new  = float(np.clip(a_new,  0.0, 0.5))
+            ap_new = float(np.clip(ap_new, 0.0, 0.5))
+
+            a, ap = a_new, ap_new
+
+            # critério simples de convergência em Re (ou em a/ap)
+            if (Re_prev is not None) and abs((Re - Re_prev)/(Re + 1e-16)) < tol:
+                break
+
+            Re_prev = Re
+
+        # Store results
+        self.a  = a
+        self.ap = ap
         
         v = (1 + C*a)*v_inf
         vp = (1 - C*ap)*omega*r
         U = sqrt(v**2 + vp**2)   
         
-        self.Re = rho*U*self.chord/fluid.mu
+        CT, CQ = self.airfoil_forces(phi, Re=self.Re)
             
         # From blade element theory
         self.dT = self.sigma*pi*rho*U**2*CT*r*self.width

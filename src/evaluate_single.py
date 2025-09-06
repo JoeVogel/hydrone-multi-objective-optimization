@@ -21,24 +21,59 @@ if __name__ == "__main__":
     radius_hub = 0.0025
     n_blades= 2
     alpha=12
-    number_of_sections = 5
+    number_of_sections = 20
 
     rotor = Rotor(
         n_blades=n_blades,
         diameter=diameter,
         radius_hub=radius_hub,
         number_of_sections=number_of_sections,
-        foil_list=['NACA_4412'] * number_of_sections,
-        chord_list=[0.0152, 0.0136, 0.0120, 0.0104, 0.0088],
+        foil_list=['NACA_0018'] * number_of_sections,
+        chord_list = [
+            0.01700, 0.01660, 0.01620, 0.01580, 0.01540,
+            0.01500, 0.01440, 0.01380, 0.01320, 0.01260,
+            0.01220, 0.01180, 0.01140, 0.01100, 0.01060,
+            0.01020, 0.00980, 0.00940, 0.00900, 0.00860
+            ],
         pitch_list=[alpha] * number_of_sections
     )
 
+    """
+        To evaluate the propeller, we need to define the operating conditions,
+        which include the rotational speed (RPM) and the inflow velocity (V_inf).
+        These parameters can be chosen based on the desired advance ratio (J),
+        which is a dimensionless parameter that relates the forward speed of the
+        propeller to its rotational speed and diameter.
+        The advance ratio is defined as:
+    
+        J = V_inf / (n * D)
+        where:
+        J = advance ratio (dimensionless)
+        V_inf = inflow velocity (m/s)
+        n = rotational speed (revolutions per second, RPS = RPM/60)
+        D = diameter of the propeller (m)
+
+        Typical values for J:
+        - For hover: J = 0 (V_inf = 0)
+        - For low-speed forward flight: J = 0.2 to 0.5
+        - For high-speed forward flight: J = 0.5 to 1.0
+
+        Example:
+        Let's assume we want to evaluate the propeller at a forward speed of 2 m/s
+        and we want to find the RPM that gives us a J value of 0.3
+        for a propeller with a diameter of 0.2 m.
+        D = 0.2 m
+        V_inf = 2 m/s
+        J = 0.3
+        n = V_inf / (J * D) = 2 / (0.3 * 0.2) = 33.33 RPS = 2000 RPM
+    """
+
     # Evaluate in air
     air_solver = AerialBEMT(
-        scenario=Scenario(rpm=1100.0, v_inf=1.0)
+        scenario=Scenario(rpm=4000.0, v_inf=3.0)
     )
 
-    T, Q, P, eta = air_solver.evaluate(rotor)
+    T, Q, P, J, CT, CQ, CP, eta = air_solver.evaluate(rotor)
 
     print("--- Results ---")
     print("")
@@ -46,18 +81,28 @@ if __name__ == "__main__":
     print("Thrust: ", T, "N")
     print("Torque: ", Q, "Nm")
     print("Power: ", P, "W")     
+    print("Advance Ratio: ", J)
+    print("Thrust Coefficient: ", CT)
+    print("Torque Coefficient: ", CQ)
+    print("Power Coefficient: ", CP)
     print("Efficiency: ", eta) 
     print("")
 
+    # For fair comparison, we use rpm and v_inf in watter that generates the same J used in air
+
     # Evaluate in water
     watter_solver = WaterBEMT(
-        scenario=Scenario(rpm=180.0, v_inf=1.0)
+        scenario=Scenario(rpm=400.0, v_inf=0.3)
     )
 
-    T, Q, P, eta = watter_solver.evaluate(rotor)     
+    T, Q, P, J, CT, CQ, CP, eta = watter_solver.evaluate(rotor)     
 
     print("Evaluation Type: ", watter_solver.type)
     print("Thrust: ", T, "N")
     print("Torque: ", Q, "Nm")          
     print("Power: ", P, "W")   
+    print("Advance Ratio: ", J)
+    print("Thrust Coefficient: ", CT)
+    print("Torque Coefficient: ", CQ)
+    print("Power Coefficient: ", CP)
     print("Efficiency: ", eta) 
