@@ -105,16 +105,6 @@ class Solver:
             phi_hi = radians(30.0) # degrees
 
             # Find inflow angle
-            # if self.solver == 'brute':
-            #     phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
-            # else:
-            #     try:
-            #         phi = optimize.bisect(sec.func, phi_lo, phi_hi, args=(v, omega))
-            #     except ValueError as e:
-            #         print(e)
-            #         print('Bisect failed, switching to brute solver')
-            #         phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
-
             if self.solver == 'brute':
                 phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
             else:
