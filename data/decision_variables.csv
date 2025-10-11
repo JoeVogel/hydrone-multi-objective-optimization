@@ -1,2 +1,2 @@
 min_blade_num,max_blade_num,diameter,min_alpha,max_alpha,foil,number_of_sections
-2,4,0.2,8.0,14.0,NACA_0018,20
+2,4,0.2,8.0,14.0,NACA0018,20

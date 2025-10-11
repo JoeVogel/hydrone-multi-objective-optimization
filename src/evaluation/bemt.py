@@ -26,6 +26,8 @@ class Solver:
         # Scenario
         self.scenario = scenario
 
+        self.omega = self.scenario.rpm*2*pi/60.0   # Rotational speed in rad/s
+
         # Fluid
         self.fluid = fluid
         
@@ -60,7 +62,6 @@ class Solver:
         rho = self.fluid.rho
         n = self.scenario.rpm/60.0
         J = self.scenario.v_inf/(n*D)
-        omega = self.scenario.rpm*2*pi/60.0
  
         CT = T/(rho*n**2*D**4)
         CQ = Q/(rho*n**2*D**5)
@@ -73,16 +74,15 @@ class Solver:
 
         return J, CT, CQ, CP, eta
 
-    def solve(self, rotor, scenario):
+    def solve(self, rotor):
         """
         Find inflow angle and calculate forces for a single rotor given rotational speed, inflow velocity and radius.
 
         :rtype: tuple
         """
 
-        rotor.precalc(scenario.twist)
+        rotor.precalc(self.scenario.twist)
 
-        omega = scenario.rpm*2*pi/60.0
         # Axial momentum (thrust)
         T = 0.0
         # Angular momentum
@@ -97,7 +97,7 @@ class Solver:
                 continue  # não computa forças no miolo
 
             if sec.radius < rotor.blade_radius:
-                v = scenario.v_inf
+                v = self.scenario.v_inf
             else:
                 v = 0.0
 
@@ -106,32 +106,32 @@ class Solver:
 
             # Find inflow angle
             if self.solver == 'brute':
-                phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
+                phi = self.brute_solve(sec, v, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
             else:
-                a_b = self._try_bracket(sec, v, omega, phi_lo, phi_hi)
+                a_b = self._try_bracket(sec, v, phi_lo, phi_hi)
                 if a_b != (None, None):
                     a, b = a_b
                     try:
-                        phi = optimize.bisect(sec.func, a, b, args=(v, omega))
+                        phi = optimize.bisect(sec.func, a, b, args=(v, self.omega))
                     except Exception as e:
                         # Falhou bisect: usa brute como fallback
                         # print(e)
                         print('Bisect failed, switching to brute solver')
-                        phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
-                        phi = self._refine_with_secant(sec, v, omega, phi, ddeg=1.0, iters=2)
+                        phi = self.brute_solve(sec, v, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
+                        phi = self._refine_with_secant(sec, v, phi, ddeg=1.0, iters=2)
                 else:
                     # Não achou bracket → brute direto
-                    phi = self.brute_solve(sec, v, omega, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
-                    phi = self._refine_with_secant(sec, v, omega, phi, ddeg=1.0, iters=2)
+                    phi = self.brute_solve(sec, v, n=500, phi_lo=phi_lo, phi_hi=phi_hi)
+                    phi = self._refine_with_secant(sec, v, phi, ddeg=1.0, iters=2)
             
-            dT, dQ = sec.forces(phi, v, omega, self.fluid)
+            dT, dQ = sec.forces(phi, v, self.omega, self.fluid)
 
             # Integrate
             T += dT
             Q += dQ
         
         # Power
-        P = Q*omega  
+        P = Q*self.omega  
 
         return T, Q, P
  
@@ -143,18 +143,17 @@ class Solver:
         :rtype: tuple
         """
         self.rotor = rotor
-        self.T, self.Q, self.P = self.solve(self.rotor, self.scenario)
+        self.T, self.Q, self.P = self.solve(self.rotor)
         
         return self.T, self.Q, self.P, self.rotor.sections_dataframe()
 
-    def brute_solve(self, sec, v, omega, n=3600, phi_lo=None, phi_hi=None):
+    def brute_solve(self, sec, v, n=3600, phi_lo=None, phi_hi=None):
         """ 
         Solve by a simple brute force procedure, iterating through all
         possible angles and selecting the one with lowest residual.
 
         :param Section sec: Section to solve for
         :param float v: Axial inflow velocity
-        :param float omega: Tangential rotational velocity
         :param int n: Number of angles to test for, optional
         :param tuple phi_bounds: Tuple with lower and upper bounds for inflow angle, optional
         :return: Inflow angle with lowest residual
@@ -168,7 +167,7 @@ class Solver:
             phis = np.linspace(-0.49*np.pi, 0.49*np.pi, n)
 
         for i,phi in enumerate(phis):
-            res = sec.func(phi, v, omega)
+            res = sec.func(phi, v, self.omega)
             if not np.isnan(res):
                 resid[i] = res
             else:
@@ -176,13 +175,12 @@ class Solver:
         i = np.argmin(abs(resid))
         return phis[i]
     
-    def _try_bracket(self, sec, v, omega, phi_lo, phi_hi):
+    def _try_bracket(self, sec, v, phi_lo, phi_hi):
         """
         Try to obtain (a,b) with sign change for sec.func inside [phi_lo, phi_hi].
         First tests the original edges; if it fails, expands around phi0 = atan2(v, omega*r).
         :param Section sec: Section to solve for
         :param float v: Axial inflow velocity
-        :param float omega: Tangential rotational velocity
         :param float phi_lo: Lower bound for inflow angle
         :param float phi_hi: Upper bound for inflow angle
         :return: Tuple (a,b) with sign change, or (None,None) if it fails
@@ -192,16 +190,16 @@ class Solver:
             return np.sign(x) if np.isfinite(x) else 0.0
 
         # 1) testa bordas originais
-        f_lo = sec.func(phi_lo, v, omega)
-        f_hi = sec.func(phi_hi, v, omega)
+        f_lo = sec.func(phi_lo, v, self.omega)
+        f_hi = sec.func(phi_hi, v, self.omega)
         if sgn(f_lo) * sgn(f_hi) < 0:
             return phi_lo, phi_hi
 
         # 2) centro geométrico
         r = sec.radius
-        if omega * r <= 1e-12:
+        if self.omega * r <= 1e-12:
             return (None, None)
-        phi0 = np.arctan2(v, omega * r)
+        phi0 = np.arctan2(v, self.omega * r)
 
         # 3) expande simetricamente ao redor de phi0, mas SEM sair de [phi_lo, phi_hi]
         # passos de 1.5°, 3°, 6°, 12°...
@@ -209,14 +207,14 @@ class Solver:
             d = np.deg2rad(1.5 * (2 ** k))
             a = np.clip(phi0 - d, phi_lo, phi_hi)
             b = np.clip(phi0 + d, phi_lo, phi_hi)
-            fa = sec.func(a, v, omega)
-            fb = sec.func(b, v, omega)
+            fa = sec.func(a, v, self.omega)
+            fb = sec.func(b, v, self.omega)
             if sgn(fa) * sgn(fb) < 0:
                 return a, b
 
         return (None, None)
     
-    def _refine_with_secant(self, sec, v, omega, phi_star, ddeg=1.0, iters=2):
+    def _refine_with_secant(self, sec, v, phi_star, ddeg=1.0, iters=2):
         """
         Refine a phi_star estimate with up to 'iters' secant steps,
         using samples at +/- ddeg degrees around it.
@@ -224,8 +222,8 @@ class Solver:
         d = np.deg2rad(ddeg)
         a = phi_star - d
         b = phi_star + d
-        fa = sec.func(a, v, omega)
-        fb = sec.func(b, v, omega)
+        fa = sec.func(a, v, self.omega)
+        fb = sec.func(b, v, self.omega)
 
         if not (np.isfinite(fa) and np.isfinite(fb)):
             return phi_star
@@ -236,7 +234,7 @@ class Solver:
             if abs(fb - fa) < 1e-14:
                 break
             c = b - fb * (b - a) / (fb - fa)
-            fc = sec.func(c, v, omega)
+            fc = sec.func(c, v, self.omega)
             a, fa = b, fb
             b, fb = c, fc
             if not np.isfinite(fb):

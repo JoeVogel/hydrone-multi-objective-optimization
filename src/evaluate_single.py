@@ -28,7 +28,7 @@ if __name__ == "__main__":
         diameter=diameter,
         radius_hub=radius_hub,
         number_of_sections=number_of_sections,
-        foil_list=['NACA_0018'] * number_of_sections,
+        foil_list=['NACA0018'] * number_of_sections,
         chord_list = [
             0.01700, 0.01660, 0.01620, 0.01580, 0.01540,
             0.01500, 0.01440, 0.01380, 0.01320, 0.01260,
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         scenario=Scenario(rpm=400.0, v_inf=0.3)
     )
 
-    T, Q, P, J, CT, CQ, CP, eta = watter_solver.evaluate(rotor)     
+    T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion = watter_solver.evaluate(rotor)     
 
     print("Evaluation Type: ", watter_solver.type)
     print("Thrust: ", T, "N")
@@ -106,3 +106,4 @@ if __name__ == "__main__":
     print("Torque Coefficient: ", CQ)
     print("Power Coefficient: ", CP)
     print("Efficiency: ", eta) 
+    print("Cavitating Proportion", cavitating_proportion)

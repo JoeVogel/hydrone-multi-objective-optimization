@@ -102,6 +102,26 @@ def _read_polar_file_with_meta(path):
     else:
         raise ValueError(f"File format not supported: {path}")
 
+def parse_thickness_from_foil_name(foil_name: str) -> float:
+        """
+        Estimate relative thickness (t/c) from the foil name.
+
+        Rules:
+        - NACA 4- or 5-digit: e.g. NACA0018, NACA23012 → last two digits = thickness (%)
+        - NACA 6-series: e.g. NACA63-018, NACA66-209 → digits after dash = thickness (%)
+        - Returns 0.12 as default if unknown.
+        """
+        if not isinstance(foil_name, str):
+            return 0.12
+        foil = foil_name.upper().replace(" ", "")
+        m = re.match(r"^NACA(\d{4,5})$", foil)
+        if m:
+            digits = m.group(1)
+            return int(digits[-2:]) / 100.0
+        m = re.match(r"^NACA\d{2}-?(\d{2,3})$", foil)
+        if m:
+            return int(m.group(1)) / 100.0
+        return 0.12
 
 class Airfoil:
     """

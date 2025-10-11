@@ -84,7 +84,7 @@ class Rotor:
         :rtype: pd.DataFrame
         """
 
-        columns = ['radius','chord','pitch','Cl','Cd','dT','dQ','F','a','ap','Re','AoA']
+        columns = ['foil_name','radius','chord','pitch','Cl','Cd','dT','dQ','F','a','ap','Re','AoA','U']
         data = {}
         for param in columns:
             array = [getattr(sec, param) for sec in self.sections]
@@ -106,6 +106,7 @@ class Section:
     """
     def __init__(self, airfoil, radius, width, pitch, chord, rotor):
         self.airfoil = airfoil
+        self.foil_name = airfoil.name
         self.radius = radius
         self.width = width
         self.pitch = pitch
@@ -126,6 +127,7 @@ class Section:
         self.F = 0.0
         self.Cl = 0.0
         self.Cd = 0.0
+        self.U = 0.0
 
         self.precalc()
         
@@ -135,7 +137,7 @@ class Section:
 
         :return: None
         """
-        self.sigma = self.rotor.n_blades*self.chord/(2*pi*self.radius)
+        self.sigma = self.rotor.n_blades*self.chord/(2*pi*self.radius) # local solidity
 
     def tip_loss(self, phi):
         """
@@ -431,13 +433,13 @@ class Section:
         
         v = (1 + C*a)*v_inf
         vp = (1 - C*ap)*omega*r
-        U = sqrt(v**2 + vp**2)   
+        self.U = sqrt(v**2 + vp**2)   
         
         CT, CQ = self.airfoil_forces(phi, Re=self.Re)
             
         # From blade element theory
-        self.dT = self.sigma*pi*rho*U**2*CT*r*self.width
-        self.dQ = self.sigma*pi*rho*U**2*CQ*r**2*self.width
+        self.dT = self.sigma*pi*rho*self.U**2*CT*r*self.width
+        self.dQ = self.sigma*pi*rho*self.U**2*CQ*r**2*self.width
 
         # From momentum theory
         # dT = 4*pi*rho*r*self.v_inf**2*(1 + a)*a*F

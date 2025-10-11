@@ -29,16 +29,19 @@ class Fluid:
         # rho = density (kg/m³)
         # mu = dynamic viscosity (kg/m·s)
         # nu = kinematic viscosity (m²/s)
+        # pv = vapor pressure (Antoine)
 
         if (type == FluidType.AIR):
             self.rho = 1.225  
             self.mu = 1.81e-5  
         elif (type == FluidType.WATER):
-            self.rho = 997.0  
-            self.mu = 8.9e-4  
+            self.rho = 991.0  
+            self.mu = 1.138e-3 
+            self.pv = 1.706
         else:
             raise ValueError(f"Unsupported fluid type: {type}")
         
         self.nu = self.mu / self.rho
+        self.temperature = 15.0
 
 
