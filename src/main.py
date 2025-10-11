@@ -30,10 +30,9 @@ if __name__ == "__main__":
         scenario=Scenario(rpm=400.0, v_inf=0.3)
     )
     
-    optimizer = NSGAII(20, 50, aerial_evaluator, aquatic_evaluator)
+    optimizer = NSGAII(20, 10, aerial_evaluator, aquatic_evaluator)
     
     pareto_fronts = optimizer.run()
-
 
     # Plot Pareto fronts
     plt.figure(figsize=(9, 6))
