@@ -122,10 +122,10 @@ if __name__ == "__main__":
     
     Usage example:
     
-    python xfoil_polar_to_airfoiltools.py NACA_0018_10000.txt NACA_0018_10000.csv --airfoil naca0018-il --re 10000 --ncrit 5 --mach 0
+    python xfoil_polar_to_airfoiltools.py NACA0018_10000.txt NACA0018_10000.csv --airfoil naca0018-il --re 10000 --ncrit 5 --mach 0
 
     or
     
-    python xfoil_polar_to_airfoiltools.py NACA_0018_10000.txt NACA_0018_10000.csv --re 10000
+    python xfoil_polar_to_airfoiltools.py NACA0018_10000.txt NACA0018_10000.csv --re 10000
     """
     main()
