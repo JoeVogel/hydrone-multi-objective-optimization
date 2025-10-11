@@ -1,8 +1,12 @@
 import os
 import random
 import logging
+import csv
 
 import pandas as pd
+
+from datetime import datetime
+from pathlib import Path
 
 from evaluation.evaluation_method import EvaluationMethod
 from .individual                  import Individual
@@ -48,6 +52,134 @@ class NSGAII:
             ]
         self.radius_hub = 0.0025
 
+        self._init_run_outputs()
+
+    def _init_run_outputs(self):
+        """Creates data/results/<datetime> and initializes evaluations.csv with header."""
+        base_dir = Path(__file__).resolve().parent
+        self.run_ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.run_dir = (base_dir / "../results" / self.run_ts).resolve()
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+
+        self.eval_csv_path   = self.run_dir / "evaluations.csv"
+        self.front_csv_path  = self.run_dir / "pareto_front.csv"
+
+        # Fixed CSV fields (lists will be serialized as strings)
+        self._eval_fields = [
+            # identification
+            "generation", "pop_index",
+            # decision variables / geometry
+            "D", "B", "radius_hub", "number_of_sections",
+            "foil_list", "chord_list", "pitch_list",
+            # Scenario (for traceability)
+            "aerial_rpm", "aerial_v_inf", "aquatic_rpm", "aquatic_v_inf",
+            # aerial metrics
+            "aerial_T","aerial_Q","aerial_P","aerial_J","aerial_CT","aerial_CQ","aerial_CP","aerial_eta","aerial_fitness",
+            # water metrics
+            "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta","aquatic_fitness",
+        ]
+
+        with self.eval_csv_path.open("w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=self._eval_fields)
+            writer.writeheader()
+
+        logger.info(f"[NSGA-II] Result dir: {self.run_dir}")
+
+    @staticmethod
+    def _serialize_list(value):
+        """Converts lists/tuples to 'v1;v2;v3' string. Keeps '' for None."""
+        if value is None:
+            return ""
+        if isinstance(value, (list, tuple)):
+            return ";".join(str(v) for v in value)
+        return str(value)
+
+    def _append_eval_row(self, generation, pop_index, individual, aerial, aquatic, target_path=None):
+        """Appends a row to evaluations.csv or another specified CSV file."""
+        row = {
+            "generation": generation,
+            "pop_index": pop_index,
+
+            "D": getattr(individual, "D", ""),
+            "B": getattr(individual, "B", ""),
+            "radius_hub": getattr(individual, "radius_hub", ""),
+            "number_of_sections": getattr(individual, "number_of_sections", ""),
+
+            "foil_list": self._serialize_list(getattr(individual, "foil_list", None)),
+            "chord_list": self._serialize_list(getattr(individual, "chord_list", None)),
+            "pitch_list": self._serialize_list(getattr(individual, "pitch_list", None)),
+
+            "aerial_rpm": getattr(self.aerial_evaluation_method.scenario, "rpm", ""),
+            "aerial_v_inf": getattr(self.aerial_evaluation_method.scenario, "v_inf", ""),
+            "aquatic_rpm": getattr(self.aquatic_evaluation_method.scenario, "rpm", ""),
+            "aquatic_v_inf": getattr(self.aquatic_evaluation_method.scenario, "v_inf", ""),
+
+            "aerial_T":   "" if aerial  is None else aerial.get("T",""),
+            "aerial_Q":   "" if aerial  is None else aerial.get("Q",""),
+            "aerial_P":   "" if aerial  is None else aerial.get("P",""),
+            "aerial_J":   "" if aerial  is None else aerial.get("J",""),
+            "aerial_CT":  "" if aerial  is None else aerial.get("CT",""),
+            "aerial_CQ":  "" if aerial  is None else aerial.get("CQ",""),
+            "aerial_CP":  "" if aerial  is None else aerial.get("CP",""),
+            "aerial_eta": "" if aerial  is None else aerial.get("eta",""),
+            "aerial_fitness": getattr(individual, "aerial_fitness", ""),
+
+            "aquatic_T":   "" if aquatic is None else aquatic.get("T",""),
+            "aquatic_Q":   "" if aquatic is None else aquatic.get("Q",""),
+            "aquatic_P":   "" if aquatic is None else aquatic.get("P",""),
+            "aquatic_J":   "" if aquatic is None else aquatic.get("J",""),
+            "aquatic_CT":  "" if aquatic is None else aquatic.get("CT",""),
+            "aquatic_CQ":  "" if aquatic is None else aquatic.get("CQ",""),
+            "aquatic_CP":  "" if aquatic is None else aquatic.get("CP",""),
+            "aquatic_eta": "" if aquatic is None else aquatic.get("eta",""),
+            "aquatic_fitness": getattr(individual, "aquatic_fitness", ""),
+        }
+
+        path = self.eval_csv_path if target_path is None else Path(target_path)
+
+        with path.open("a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=self._eval_fields)
+            writer.writerow(row)
+
+    def _write_pareto_front_csv(self, front):
+        """Writes the first Pareto front to pareto_front.csv, recalculating metrics for traceability."""
+        with self.front_csv_path.open("w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=self._eval_fields)
+            writer.writeheader()
+
+            for i, ind in enumerate(front):
+                # Reconstrói o rotor a partir do indivíduo
+                rotor = Rotor(
+                    n_blades=ind.B,
+                    diameter=ind.D,
+                    radius_hub=ind.radius_hub,
+                    number_of_sections=getattr(ind, "number_of_sections", self.number_of_sections),
+                    foil_list=getattr(ind, "foil_list", None),
+                    chord_list=getattr(ind, "chord_list", None),
+                    pitch_list=getattr(ind, "pitch_list", None),
+                )
+
+                a = w = None
+                try:
+                    aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta = self.aerial_evaluation_method.evaluate(rotor)
+                    a = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta}
+                except Exception as e:
+                    logger.debug(f"[Front CSV] Aerial eval failed: {e}")
+                try:
+                    wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta = self.aquatic_evaluation_method.evaluate(rotor)
+                    w = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta}
+                except Exception as e:
+                    logger.debug(f"[Front CSV] Aquatic eval failed: {e}")
+
+                self._append_eval_row(
+                    generation=self.maximum_generations,  # último gen
+                    pop_index=i,
+                    individual=ind,
+                    aerial=a,
+                    aquatic=w,
+                    target_path=self.front_csv_path
+                )
+
     def run(self):
         """
         Executes the NSGA-II optimization process and returns Pareto fronts.
@@ -57,7 +189,7 @@ class NSGAII:
             logger.info(f"Generation {generation}/{self.maximum_generations}")
 
             # Evaluate population
-            for individual in population:
+            for idx, individual in enumerate(population):
 
                 rotor = Rotor(
                     n_blades=individual.B,
@@ -68,31 +200,45 @@ class NSGAII:
                     chord_list=individual.chord_list,
                     pitch_list=individual.pitch_list
                 )
+
+                aerial = None
+                aquatic = None
                 
                 try:
-                    aerial_T, aerial_Q, aerial_P, aerial_J, aerial_CT, aerial_CQ, aerial_CP, aerial_eta = self.aerial_evaluation_method.evaluate(rotor)
+                    aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta = self.aerial_evaluation_method.evaluate(rotor)
 
                     # TODO: define air fitness function
-                    individual.aerial_fitness = aerial_eta
+                    individual.aerial_fitness = aEta
+                    aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta}
                 except Exception as e:
                     logger.debug(f"[NSGA] Aerial eval failed for individual: {e}")
                     individual.aerial_fitness = 0.0  # penalização
                 
                 try:
-                    aquatic_T, aquatic_Q, aquatic_P, aquatic_J, aquatic_CT, aquatic_CQ, aquatic_CP, aquatic_eta = self.aquatic_evaluation_method.evaluate(rotor)
+                    wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta = self.aquatic_evaluation_method.evaluate(rotor)
                     
                     # TODO: define water fitness function
-                    individual.aquatic_fitness = aquatic_eta
+                    individual.aquatic_fitness = wEta
+                    aquatic = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta}
                 except Exception as e:
                     logger.debug(f"[NSGA] Aquatic eval failed for individual: {e}")
                     individual.aquatic_fitness = 0.0  # penalização
+                
+                self._append_eval_row(
+                    generation=generation,
+                    pop_index=idx,
+                    individual=individual,
+                    aerial=aerial,
+                    aquatic=aquatic
+                )
 
             # Perform non-dominated sorting
             fronts = self._fast_non_dominated_sort(population)
 
-            # TODO: implementar max generations ou convergência
+            # If last generation, dont't create next generation
             if (generation == self.maximum_generations):
-                continue
+                logger.info("Maximum generations reached, stopping.")
+                break
 
             # Calculate crowding distance for each front
             for front in fronts:
@@ -100,7 +246,11 @@ class NSGAII:
 
             # Selection, crossover, and mutation
             population = self._create_next_generation(population, fronts)
-            
+        
+        if fronts and len(fronts[0]) > 0:
+            self._write_pareto_front_csv(fronts[0])
+            logger.info(f"[NSGA-II] Pareto front salvo em {self.front_csv_path}")
+
         return fronts
 
     def _initialize_population(self):

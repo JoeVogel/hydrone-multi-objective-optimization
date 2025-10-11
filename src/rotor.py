@@ -228,18 +228,24 @@ class Section:
                 
     def airfoil_forces(self, phi, Re):
         """
-        Force coefficients on an airfoil, decomposed in axial and tangential directions:
+        Force coefficients on an airfoil, decomposed in axial (C_T) and tangential (C_Q) directions:
 
+        The coefficients are calculated using the airfoil lift (C_l) and drag (C_d) values from 
+        the airfoil data tables, and the inflow angle (φ):
+        
         .. math::
-            C_T = C_l\\cos{\\phi} - CC_d\\sin{\\phi} \\\\
-            C_Q = C_l\\sin{\\phi} + CC_d\\cos{\\phi} \\\\
+            C_T = C_l * cos(φ) - C * C_d * sin(φ)
+            C_Q = C_l * sin(φ) + C * C_d * cos(φ)
 
-        where drag and lift coefficients come from
-        airfoil tables.
+        where:
+            - φ (phi) is the inflow angle between the incoming airflow and the propeller’s plane of rotation,
+            - C is a correction factor applied to both the angle of attack and drag term,
+            - α (alpha) = C * (pitch - φ) is the effective angle of attack,
+            - C_l and C_d are obtained from airfoil performance tables based on α.
 
-        :param float phi: Inflow angle
+        :param float phi: Inflow angle in radians
         :param float Re: Reynolds number
-        :return: Axial and tangential force coefficients
+        :return: (C_T, C_Q) — axial and tangential force coefficients
         :rtype: tuple
         """
 
