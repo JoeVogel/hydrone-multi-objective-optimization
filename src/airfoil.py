@@ -36,6 +36,7 @@ import matplotlib.pyplot as pl
 from scipy.interpolate import interp1d
 from math import degrees, radians, atan2, sin, cos
 from bisect import bisect_left
+from typing import Optional, Union, Iterable
 
 
 AIRFOILS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'airfoils')
@@ -102,7 +103,15 @@ def _read_polar_file_with_meta(path):
     else:
         raise ValueError(f"File format not supported: {path}")
 
-def parse_thickness_from_foil_name(foil_name: str) -> float:
+def thickness_e63() -> float:
+    """
+    Relative thickness t/c for the Eppler 63 airfoil based on airfoil tools.
+    http://airfoiltools.com/airfoil/details?airfoil=e63-il
+    """
+    
+    return float(0.0425) # at 22.8% chord.
+
+def thickness_naca(foil_name: str) -> float:
         """
         Estimate relative thickness (t/c) from the foil name.
 

@@ -29,7 +29,7 @@ class Fluid:
         # rho = density (kg/m³)
         # mu = dynamic viscosity (kg/m·s)
         # nu = kinematic viscosity (m²/s)
-        # pv = vapor pressure (Antoine)
+        # pv = vapor pressure (kPa) (Antoine)
 
         if (type == FluidType.AIR):
             self.rho = 1.225  

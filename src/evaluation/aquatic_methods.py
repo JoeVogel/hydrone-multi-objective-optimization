@@ -4,7 +4,7 @@ from .fidelity_level            import FidelityLevel
 from fluid                      import FluidType, Fluid
 from scenario                   import Scenario
 from rotor                      import Rotor
-from airfoil                    import parse_thickness_from_foil_name
+from airfoil                    import thickness_naca, thickness_e63
 from .bemt                      import Solver as BEMTSolver
 
 import os
@@ -98,14 +98,23 @@ class WaterBEMT(EvaluationMethod):
             - 'cavitation_risk'  : boolean flag; True if (Cp_min + sigma) <= 0, else False
             For skipped/ignored rows, the added columns are NaN/False accordingly.
         """
-        rho = self.fluid.rho
-        pv = self.fluid.pv * 1e3
-        patm = 101325.0
-        g = 9.80665
-        p_inf = patm + rho * g * depth
+        rho  = self.fluid.rho                 # [kg/m^3]
+        pv   = self.fluid.pv * 1e3            # [Pa] (vapor pressure in kPa to Pa)
+        patm = 101325.0                       # [Pa]
+        g    = 9.80665                        # [m/s^2]
+        p_inf = patm + rho * g * float(depth) # [Pa]
 
         if 'radius' not in sections_df.columns:
             raise ValueError("sections_df must contain the column 'radius' (radial position).")
+        
+        # ---- Correlation for |Cp|min ----
+        # Reminder: the article suggests σ_i = |Cp|min - Dσ(δ, r, U1, U2); here we use
+        # a simple model |Cp|min ≈ b0 + b1*(alpha/10) + b2*(tc/0.1) (≥ 0).
+        # Calibrate (b0, b1, b2) with CFD or water-tunnel data for your specific case.
+        b0, b1, b2 = 0.30, 0.12, 0.40  # coeficientes exemplo (ajuste!)
+        def cp_abs_min_est(alpha_deg: float, tc: float) -> float:
+            x = b0 + b1 * (alpha_deg / 10.0) + b2 * (tc / 0.1)
+            return max(0.0, float(x))  # ensures non-negative result
 
         results = []
         for idx, row in sections_df.iterrows():
@@ -115,21 +124,30 @@ class WaterBEMT(EvaluationMethod):
                 results.append((np.nan, np.nan, False))
                 continue
             
+            # Local sigma (uses local U)
             sigma_cav = (p_inf - pv) / (0.5 * rho * U**2)
 
-            foil = row['foil_name']
-            tc = parse_thickness_from_foil_name(foil)
-            
+            # Alpha (angle of attack)
             alpha = row['AoA']
             alpha = float(alpha)
 
-            # Simplified correlation D_sigma = f(alpha, t/c)
-            a1, a2 = 0.15, 0.5
-            D_sigma = a1 * (alpha / 10.0) + a2 * (tc / 0.1)
-            Cp_min = -(sigma_cav + D_sigma)
-            cavitation_risk = (Cp_min + sigma_cav) <= 0.0
+            # t/c
+            foil = row['foil_name']
+            tc = 0.1  # Default thickness ratio if unknown
+        
+            if foil == 'E63':
+                tc = thickness_e63()
+            elif isinstance(foil, str) and foil.strip().upper().startswith("NACA"):
+                tc = thickness_naca(foil)
+            
+            # Estimated |Cp|min (positive value) , and Cp_min (negative value)
+            cp_abs_min = cp_abs_min_est(alpha, tc)   # >= 0
+            Cp_min = -cp_abs_min
 
-            results.append((sigma_cav, Cp_min, cavitation_risk))
+            # Flag cavitation risk if |Cp|min >= sigma
+            cavitation_risk = (cp_abs_min >= sigma_cav)
+
+            results.append((sigma_cav, Cp_min, bool(cavitation_risk)))
 
         sections_df[['sigma_cav', 'Cp_min', 'cavitation_risk']] = pd.DataFrame(results, index=sections_df.index)
         return sections_df
@@ -145,9 +163,9 @@ class WaterBEMT(EvaluationMethod):
 
         cavitating_proportion = 0.0
 
-        # sec_df = self._compute_cavitation_sections(sections_df=sec_df, depth=0.5)
+        sec_df = self._compute_cavitation_sections(sections_df=sec_df, depth=0.5)
 
-        # num_cavitating_sections = int(sec_df['cavitation_risk'].fillna(False).sum())
-        # cavitating_proportion = num_cavitating_sections / len(sec_df)
+        num_cavitating_sections = int(sec_df['cavitation_risk'].fillna(False).sum())
+        cavitating_proportion = num_cavitating_sections / len(sec_df)
 
         return T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion

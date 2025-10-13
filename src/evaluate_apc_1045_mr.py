@@ -52,6 +52,7 @@ if __name__ == "__main__":
         4.3960, 4.3891, 4.3811, 4.3719, 4.3612, 4.3488, 4.3347, 4.3185,
         4.3003, 4.2797, 4.2567, 4.2310, 4.2022, 4.1701, 4.1348, 4.5147
     ]
+
     inch = 0.0254
     pitch_list = [
         math.degrees(math.atan2(p*inch, 2*math.pi*r))
@@ -153,3 +154,21 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     plt.show()
+
+    # Evaluate in water
+    watter_solver = WaterBEMT(
+        scenario=Scenario(rpm=5.0, v_inf=0.0)
+    )
+
+    T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion = watter_solver.evaluate(rotor)     
+
+    print("Evaluation Type: ", watter_solver.type)
+    print("Thrust: ", T, "N")
+    print("Torque: ", Q, "Nm")          
+    print("Power: ", P, "W")   
+    print("Advance Ratio: ", J)
+    print("Thrust Coefficient: ", CT)
+    print("Torque Coefficient: ", CQ)
+    print("Power Coefficient: ", CP)
+    print("Efficiency: ", eta) 
+    print("Cavitating Proportion", cavitating_proportion)
