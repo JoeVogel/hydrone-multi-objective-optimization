@@ -143,9 +143,11 @@ class WaterBEMT(EvaluationMethod):
         # print("RE minimo: ", sec_df['Re'][4])
         # print("RE maximo: ", sec_df['Re'].max())
 
-        sec_df = self._compute_cavitation_sections(sections_df=sec_df, depth=0.5)
+        cavitating_proportion = 0.0
 
-        num_cavitating_sections = int(sec_df['cavitation_risk'].fillna(False).sum())
-        cavitating_proportion = num_cavitating_sections / len(sec_df)
+        # sec_df = self._compute_cavitation_sections(sections_df=sec_df, depth=0.5)
+
+        # num_cavitating_sections = int(sec_df['cavitation_risk'].fillna(False).sum())
+        # cavitating_proportion = num_cavitating_sections / len(sec_df)
 
         return T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion
