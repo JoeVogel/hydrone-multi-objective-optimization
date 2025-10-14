@@ -111,6 +111,7 @@ class WaterBEMT(EvaluationMethod):
         # Reminder: the article suggests σ_i = |Cp|min - Dσ(δ, r, U1, U2); here we use
         # a simple model |Cp|min ≈ b0 + b1*(alpha/10) + b2*(tc/0.1) (≥ 0).
         # Calibrate (b0, b1, b2) with CFD or water-tunnel data for your specific case.
+        # TODO: implementar lógica para buscar cpmin dos multiplos Re (clampar e pegar de dois vizinhos) para setar b0, b1 e b2 
         b0, b1, b2 = 0.30, 0.12, 0.40  # coeficientes exemplo (ajuste!)
         def cp_abs_min_est(alpha_deg: float, tc: float) -> float:
             x = b0 + b1 * (alpha_deg / 10.0) + b2 * (tc / 0.1)

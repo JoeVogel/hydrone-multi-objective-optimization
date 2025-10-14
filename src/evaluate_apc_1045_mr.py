@@ -157,7 +157,7 @@ if __name__ == "__main__":
 
     # Evaluate in water
     watter_solver = WaterBEMT(
-        scenario=Scenario(rpm=5.0, v_inf=0.0)
+        scenario=Scenario(rpm=400.0, v_inf=0.0)
     )
 
     T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion = watter_solver.evaluate(rotor)     
