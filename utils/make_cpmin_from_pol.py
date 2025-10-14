@@ -34,7 +34,9 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
+_rx_alfa = re.compile(r'Alfa\s*=\s*([+-]?\d+(?:\.\d+)?)')
 
 def parse_angles_from_pol(pol_path: Path) -> list[float]:
     """
@@ -94,34 +96,48 @@ def write_xfoil_inp(
       - Optionally records the polar with PACC <polar_out>.
     """
     cp_dir.mkdir(parents=True, exist_ok=True)
+    
+    xfoil_source_path = inp_path.parent.parent / 'xfoil.exe'
+    xfoil_dest_path = inp_path.parent / 'xfoil.exe'
+    shutil.copyfile(xfoil_source_path, xfoil_dest_path)
+    
+    pplot_source_path = inp_path.parent.parent / 'pplot.exe'
+    pplot_dest_path = inp_path.parent / 'pplot.exe'
+    shutil.copyfile(pplot_source_path, pplot_dest_path)
+    
+    pxplot_source_path = inp_path.parent.parent / 'pxplot.exe'
+    pxplot_dest_path = inp_path.parent / 'pxplot.exe'
+    shutil.copyfile(pxplot_source_path, pxplot_dest_path)
 
     lines = []
     if foil_file:
-        lines += [
-            f"LOAD {foil_file}",
-        ]
+        foil_path = Path(foil_file).resolve()
+        dst = inp_path.parent / foil_path.name
+        if foil_path.resolve() != dst.resolve():
+            dst.write_bytes(foil_path.read_bytes())  # copia conteúdo
+        
+        lines += [f"LOAD {foil_path.name}"]
     elif naca_code:
-        lines += [
-            f"NACA {naca_code}",
-        ]
+        lines += [f"NACA {naca_code}"]
     else:
         raise ValueError("Provide either --foil-file or --naca.")
 
     # Paneling
     lines += [
         "PPAR",
-        f" N {n_pan}",
-        f" T {t_pan}",
-        f" R {r_le}",
+        f"N {n_pan}",
+        f"T {t_pan}",
+        f"R {r_le}",
+        "",
         "",
         "PANE",
         "OPER",
-        f" MACH {mach}",
-        f" VISC {re:.0f}",
-        f" ITER {iter_max}",
-        " VPAR",
-        f"  N {vpar_n}",
-        f"  VACC {vacc}",
+        f"MACH {mach}",
+        f"VISC {re:.0f}",
+        f"ITER {iter_max}",
+        "VPAR",
+        f"N {vpar_n}",
+        f"VACC {vacc}",
         "",
     ]
 
@@ -136,11 +152,10 @@ def write_xfoil_inp(
     # One CPWR per angle
     for a in angles_deg:
         tag = f"a{a:+06.2f}".replace(".", "_").replace("+", "p").replace("-", "m")
-        cp_name = cp_dir / f"cp_{tag}.txt"
+        cp_rel = Path("cp") / f"cp_{tag}.txt"
         lines += [
             f"ALFA {a:.2f}",
-            f"CPWR {cp_name.as_posix()}",
-            "",
+            f"CPWR {cp_rel.as_posix()}",
         ]
 
     # Stop saving polar
@@ -151,6 +166,8 @@ def write_xfoil_inp(
         ]
 
     lines += [
+        "",
+        "",
         "QUIT",
         "",
     ]
@@ -167,6 +184,7 @@ def run_xfoil(inp_path: Path, xfoil_bin: str = "xfoil") -> int:
             text=True,
             capture_output=True,
             check=False,
+            cwd=inp_path.parent,
         )
     except FileNotFoundError:
         print(f"ERROR: XFOIL binary '{xfoil_bin}' not found in PATH.", file=sys.stderr)
@@ -179,63 +197,74 @@ def run_xfoil(inp_path: Path, xfoil_bin: str = "xfoil") -> int:
     return proc.returncode
 
 
+def _angle_from_filename(p: Path):
+    # fallback: cp_am00_25.txt -> -00.25
+    m = re.search(r'cp_a([pm]\d+_\d+)', p.stem)
+    if not m:
+        return None
+    tag = m.group(1)
+    s = tag.replace('p', '+').replace('m', '-').replace('_', '.')
+    try:
+        return float(s)
+    except ValueError:
+        return None
+    
+    
 def parse_cp_files(cp_dir: Path) -> pd.DataFrame:
     """
-    Parse all CPWR files in cp_dir, find global min(Cp) per file, and return a DataFrame:
-        file, angle_deg, cp_min, abs_cp_min
-    Assumes filenames like 'cp_a+04.00.txt' (created by write_xfoil_inp()).
+    Lê todos os arquivos CPWR em cp_dir (linhas 'x  y  Cp'), encontra min(Cp) por arquivo,
+    e retorna DataFrame: file, angle_deg, cp_min, abs_cp_min, n_points.
     """
     rows = []
     for p in sorted(cp_dir.glob("cp_*.txt")):
-        # extract angle from filename
-        m = re.search(r"a([pm]\d+_\d+)", p.stem)
-        angle_deg = None
-        if m:
-            tag = m.group(1)
-            # reverse transform: p -> +, m -> -, '_' -> '.'
-            s = tag.replace("p", "+").replace("m", "-").replace("_", ".")
-            try:
-                angle_deg = float(s)
-            except ValueError:
-                angle_deg = None
-
-        # read (x/c, Cp) table; ignore commented lines if any
-        try:
-            df = pd.read_csv(
-                p, delim_whitespace=True, names=["x_over_c", "Cp"], comment="#", engine="python"
-            )
-        except Exception:
-            # Sometimes XFOIL writes extra headers; try to autodetect numeric rows
-            lines = []
-            with open(p, "r", encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    s = line.strip()
-                    if not s:
+        cps = []
+        alfa = None
+        with open(p, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                s = line.strip()
+                if not s:
+                    continue
+                # tenta capturar o ângulo pelo cabeçalho
+                m = _rx_alfa.search(s)
+                if m:
+                    try:
+                        alfa = float(m.group(1))
+                    except ValueError:
+                        pass
+                    continue
+                # ignora cabeçalhos/comentários
+                if s[0].isalpha() or s[0] == '#':
+                    continue
+                # notação Fortran (D) -> E
+                s = s.replace('D', 'E').replace('d', 'e')
+                parts = s.split()
+                # precisa de pelo menos 3 colunas: x, y, Cp
+                if len(parts) >= 3:
+                    try:
+                        # terceira coluna é Cp
+                        cp = float(parts[2])
+                        cps.append(cp)
+                    except ValueError:
                         continue
-                    parts = s.split()
-                    if len(parts) >= 2:
-                        try:
-                            float(parts[0]); float(parts[1])
-                            lines.append((float(parts[0]), float(parts[1])))
-                        except ValueError:
-                            continue
-            df = pd.DataFrame(lines, columns=["x_over_c", "Cp"])
 
-        if df.empty or "Cp" not in df:
+        if not cps:
             continue
 
-        cp_min = df["Cp"].min()  # most negative
-        rows.append(
-            {
-                "file": p.as_posix(),
-                "angle_deg": angle_deg,
-                "cp_min": float(cp_min),
-                "abs_cp_min": float(abs(cp_min)),
-                "n_points": int(len(df)),
-            }
-        )
+        if alfa is None:
+            alfa = _angle_from_filename(p)
 
-    return pd.DataFrame(rows).sort_values(["angle_deg", "file"], ignore_index=True)
+        cp_min = float(np.min(cps))
+        rows.append({
+            "angle_deg": alfa,
+            "cp_min": cp_min,
+            "abs_cp_min": abs(cp_min),
+            "n_points": len(cps),
+        })
+
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values(["angle_deg"], ignore_index=True)
+    return df
 
 
 def main():
@@ -309,7 +338,15 @@ def main():
         print("ERROR: No CP files parsed. Check XFOIL logs and input.", file=sys.stderr)
         sys.exit(4)
 
-    out_csv = out_dir / "cpmin_from_pol.csv"
+    if args.foil_file:
+        file_name_parts = args.foil_file.split('.')
+        out_csv = out_dir / f"cpmin_{file_name_parts[0]}_{int(args.re)}.csv"
+    elif args.naca:
+        out_csv = out_dir / f"cpmin_naca{args.naca}_{int(args.re)}.csv"
+    else:
+        raise ValueError("Provide either --foil-file or --naca.")
+
+    
     df.to_csv(out_csv, index=False)
     print(f"[✓] Saved CSV: {out_csv}")
     print(df.head(10).to_string(index=False))
