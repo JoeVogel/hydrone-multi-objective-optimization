@@ -106,49 +106,22 @@ class WaterBEMT(EvaluationMethod):
 
         if 'radius' not in sections_df.columns:
             raise ValueError("sections_df must contain the column 'radius' (radial position).")
-        
-        # ---- Correlation for |Cp|min ----
-        # Reminder: the article suggests σ_i = |Cp|min - Dσ(δ, r, U1, U2); here we use
-        # a simple model |Cp|min ≈ b0 + b1*(alpha/10) + b2*(tc/0.1) (≥ 0).
-        # Calibrate (b0, b1, b2) with CFD or water-tunnel data for your specific case.
-        # TODO: implementar lógica para buscar cpmin dos multiplos Re (clampar e pegar de dois vizinhos) para setar b0, b1 e b2 
-        b0, b1, b2 = 0.30, 0.12, 0.40  # coeficientes exemplo (ajuste!)
-        def cp_abs_min_est(alpha_deg: float, tc: float) -> float:
-            x = b0 + b1 * (alpha_deg / 10.0) + b2 * (tc / 0.1)
-            return max(0.0, float(x))  # ensures non-negative result
 
         results = []
         for idx, row in sections_df.iterrows():
             U = row['U'] # Local relative velocity at the section
+            Cp_min = row['Cp_min'] # minimum pressure coefficient
 
-            if U <= 0.0:
+            if U <= 0.0 or Cp_min == 0.0:
                 results.append((np.nan, np.nan, False))
                 continue
             
             # Local sigma (uses local U)
             sigma_cav = (p_inf - pv) / (0.5 * rho * U**2)
 
-            # Alpha (angle of attack)
-            alpha = row['AoA']
-            alpha = float(alpha)
+            cavitates = (Cp_min + sigma_cav) <= 0.0
 
-            # t/c
-            foil = row['foil_name']
-            tc = 0.1  # Default thickness ratio if unknown
-        
-            if foil == 'E63':
-                tc = thickness_e63()
-            elif isinstance(foil, str) and foil.strip().upper().startswith("NACA"):
-                tc = thickness_naca(foil)
-            
-            # Estimated |Cp|min (positive value) , and Cp_min (negative value)
-            cp_abs_min = cp_abs_min_est(alpha, tc)   # >= 0
-            Cp_min = -cp_abs_min
-
-            # Flag cavitation risk if |Cp|min >= sigma
-            cavitation_risk = (cp_abs_min >= sigma_cav)
-
-            results.append((sigma_cav, Cp_min, bool(cavitation_risk)))
+            results.append((sigma_cav, Cp_min, bool(cavitates)))
 
         sections_df[['sigma_cav', 'Cp_min', 'cavitation_risk']] = pd.DataFrame(results, index=sections_df.index)
         return sections_df
@@ -164,6 +137,7 @@ class WaterBEMT(EvaluationMethod):
 
         cavitating_proportion = 0.0
 
+        # TODO: depurar para ver se está tudo ok
         sec_df = self._compute_cavitation_sections(sections_df=sec_df, depth=0.5)
 
         num_cavitating_sections = int(sec_df['cavitation_risk'].fillna(False).sum())

@@ -84,7 +84,7 @@ class Rotor:
         :rtype: pd.DataFrame
         """
 
-        columns = ['foil_name','radius','chord','pitch','Cl','Cd','dT','dQ','F','a','ap','Re','AoA','U']
+        columns = ['foil_name','radius','chord','pitch','Cl','Cd','dT','dQ','F','a','ap','Re','AoA','U', 'Cp_min']
         data = {}
         for param in columns:
             array = [getattr(sec, param) for sec in self.sections]
@@ -128,6 +128,7 @@ class Section:
         self.Cl = 0.0
         self.Cd = 0.0
         self.U = 0.0
+        self.Cp_min = 0.0
 
         self.precalc()
         
@@ -255,8 +256,9 @@ class Section:
 
         alpha = C*(self.pitch - phi)
                 
-        Cl = self.airfoil.Cl(alpha, Re)
-        Cd = self.airfoil.Cd(alpha, Re)
+        Cl          = self.airfoil.Cl(alpha, Re)
+        Cd          = self.airfoil.Cd(alpha, Re)
+        self.Cp_min = self.airfoil.Cp_min(alpha, Re)
                 
         CT = Cl*cos(phi) - C*Cd*sin(phi)
         CQ = Cl*sin(phi) + C*Cd*cos(phi)

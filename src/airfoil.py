@@ -20,7 +20,11 @@ for a single airfoil, e.g.
 
     or 
 
-    python airfoil.py NACA_4412 -180 180 100000
+    python airfoil.py NACA_4412 -180 180 10000
+
+    or 
+
+    python airfoil.py NACA_4412 -180 180 10000 cpmin
 
 """
 
@@ -32,7 +36,7 @@ import pandas as pd
 import numpy as np
 import matplotlib
 matplotlib.use("Qt5Agg")
-import matplotlib.pyplot as pl
+import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from math import degrees, radians, atan2, sin, cos
 from bisect import bisect_left
@@ -40,6 +44,7 @@ from typing import Optional, Union, Iterable
 
 
 AIRFOILS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'airfoils')
+CPMIN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cpmin')
 
 def _read_airfoiltools_header(path):
     """
@@ -103,6 +108,28 @@ def _read_polar_file_with_meta(path):
     else:
         raise ValueError(f"File format not supported: {path}")
 
+def _read_cpmin_files(name: str):
+    """
+    Load cp_min CSV files for an airfoil from ./cpmin.
+    Expected columns: angle_deg, cp_min. Cp_min is negative.
+    Filenames: cpmin_<airfoil>_<Re>.csv  (case-insensitive, e.g., cpmin_naca4412_100000.csv)
+    Returns a list of (Re, alpha_deg_array, cpmin_array).
+    """
+    norm = re.sub(r'[^a-z0-9]', '', name.lower())
+    files = glob.glob(os.path.join(CPMIN_DIR, f'cpmin_{norm}_*.csv'))
+    out = []
+    for path in files:
+        m = re.search(rf'cpmin_{norm}_(\d+)\.csv$', os.path.basename(path), flags=re.IGNORECASE)
+        if not m:
+            continue
+        Re = float(m.group(1))
+        df = pd.read_csv(path)
+        alpha = df['angle_deg'].to_numpy(dtype=float)
+        cpmin = df['cp_min'].to_numpy(dtype=float)
+        out.append((Re, alpha, cpmin))
+    out.sort(key=lambda t: t[0])
+    return out
+
 def thickness_e63() -> float:
     """
     Relative thickness t/c for the Eppler 63 airfoil based on airfoil tools.
@@ -154,6 +181,12 @@ class Airfoil:
         self._cd_funcs = {}     # Re -> interp1d(alpha_deg -> Cd)
         self.default_Re = None  # chosen default Re when caller omits Re
 
+        # Cp_min (multi-Re or single-Re)
+        self._cp_min_funcs = {}   # Re -> interp1d(alpha_deg -> cp_min)
+        self._cpmin_re_list = []  # sorted Re list for cp_min
+        self.Cp_min_func = None   # single-Re fallback
+        self.cpmin_alpha_ = None  # single-Re alpha cache
+
         self.zero_lift = 0.0
         
     def _normalize_angle(self, alpha):
@@ -198,6 +231,21 @@ class Airfoil:
             return self._cd_alpha_re(alpha_deg, use_Re)
         return float(self.Cd_func(alpha_deg))
 
+    def Cp_min(self, alpha, Re=None):
+        """
+        Minimum pressure coefficient at given angle (radians) and Reynolds number.
+        Uses bilinear interpolation in (alpha, Re). If only one Re is available, the Re argument is ignored.
+        """
+        alpha_deg = -self.zero_lift + degrees(self._normalize_angle(alpha))
+        # multi-Re cp_min
+        if self._cpmin_re_list:
+            use_Re = Re if Re is not None else (self._cpmin_re_list[len(self._cpmin_re_list)//2])
+            return self._cpmin_bilinear(alpha_deg, use_Re)
+        # single-Re fallback
+        if self.Cp_min_func is None:
+            raise ValueError(f'cp_min data not loaded for {self.name}')
+        return float(self.Cp_min_func(alpha_deg))
+
     # ---------- Internal helpers for multi-Re ----------
     def _cl_alpha_re(self, alpha_deg, Re):
         # exact Re?
@@ -239,6 +287,36 @@ class Airfoil:
         w = (logRe - np.log(re1)) / (np.log(re2) - np.log(re1))
         return float((1 - w) * f1 + w * f2)
 
+    def _cpmin_bilinear(self, alpha_deg: float, Re: float) -> float:
+        """
+        Bilinear interpolation for cp_min:
+        - Linear interpolation in angle within each Re.
+        - Linear interpolation in Re (not log(Re)).
+        """
+        re_sorted = self._cpmin_re_list
+        if not re_sorted:
+            raise ValueError(f'cp_min data not loaded for {self.name}')
+
+        # Exact match
+        if Re in self._cp_min_funcs:
+            return float(self._cp_min_funcs[Re](alpha_deg))
+
+        # Find bounding Re values
+        i = bisect_left(re_sorted, Re)
+        if i == 0:
+            r1, r2 = re_sorted[0], re_sorted[1]
+        elif i >= len(re_sorted):
+            r1, r2 = re_sorted[-2], re_sorted[-1]
+        else:
+            r1, r2 = re_sorted[i - 1], re_sorted[i]
+
+        v1 = self._cp_min_funcs[r1](alpha_deg)
+        v2 = self._cp_min_funcs[r2](alpha_deg)
+
+        # Linear interpolation in Re
+        w = (Re - r1) / (r2 - r1)
+        return float((1.0 - w) * v1 + w * v2)
+
     # ---------- Plot (single-Re or any chosen Re) ----------
 
     def plot(self, color='k', Re=None, xlim=None):
@@ -250,12 +328,12 @@ class Airfoil:
 
         # Single-Re case (old behavior)
         if not self.re_list:
-            pl.plot(self.alpha_, self.Cl_, color + '-')
-            pl.plot(self.alpha_, self.Cd_, color + '--')
-            pl.title(f'Airfoil characteristics for {self.name}')
-            pl.xlabel('Angle of attack (deg)')
-            pl.ylabel('Drag and lift coefficients')
-            pl.legend(('$C_l$','$C_d$'))
+            plt.plot(self.alpha_, self.Cl_, color + '-')
+            plt.plot(self.alpha_, self.Cd_, color + '--')
+            plt.title(f'Airfoil characteristics for {self.name}')
+            plt.xlabel('Angle of attack (deg)')
+            plt.ylabel('Drag and lift coefficients')
+            plt.legend(('$C_l$','$C_d$'))
             return
 
         # Multi-Re case
@@ -301,13 +379,61 @@ class Airfoil:
         Cd_vals = [self._cd_alpha_re(a, Re) for a in alpha_grid]
 
         # 4) Plot curves
-        pl.plot(alpha_grid, Cl_vals, color + '-')
-        pl.plot(alpha_grid, Cd_vals, color + '--')
-        pl.title(f'Airfoil characteristics for {self.name} @ Re={Re:.0f}')
-        pl.xlabel('Angle of attack (deg)')
-        pl.ylabel('Drag and lift coefficients')
-        pl.legend(('$C_l$', '$C_d$'))
-        
+        plt.plot(alpha_grid, Cl_vals, color + '-')
+        plt.plot(alpha_grid, Cd_vals, color + '--')
+        plt.title(f'Airfoil characteristics for {self.name} @ Re={Re:.0f}')
+        plt.xlabel('Angle of attack (deg)')
+        plt.xticks(np.arange(a_min, a_max + 1, 2))
+        plt.ylabel('Drag and lift coefficients')
+        plt.legend(('$C_l$', '$C_d$'))
+        plt.grid(True, linestyle='--', alpha=0.6)
+    
+    def plot_cpmin(self, Re=None, xlim=None):
+        """
+        Plot cp_min vs angle (degrees) for a chosen Re.
+        """
+        if not self._cpmin_re_list and self.Cp_min_func is None:
+            raise ValueError(f'cp_min data not loaded for {self.name}')
+
+        # choose Re and alpha grid
+        if self._cpmin_re_list:
+            if Re is None:
+                Re = self._cpmin_re_list[len(self._cpmin_re_list)//2]
+            if Re in self._cp_min_funcs:
+                a_min = float(self._cp_min_funcs[Re].x.min())
+                a_max = float(self._cp_min_funcs[Re].x.max())
+            else:
+                i = bisect_left(self._cpmin_re_list, Re)
+                i = max(1, min(i, len(self._cpmin_re_list)-1))
+                r1, r2 = self._cpmin_re_list[i-1], self._cpmin_re_list[i]
+                a1 = self._cp_min_funcs[r1].x
+                a2 = self._cp_min_funcs[r2].x
+                a_min = max(a1.min(), a2.min())
+                a_max = min(a1.max(), a2.max())
+        else:
+            # single-Re
+            a_min = float(self.cpmin_alpha_.min())
+            a_max = float(self.cpmin_alpha_.max())
+
+        if xlim is not None:
+            a_min = max(a_min, float(xlim[0]))
+            a_max = min(a_max, float(xlim[1]))
+
+        alpha_grid = np.linspace(a_min, a_max, 400) if a_max > a_min else np.array([a_min, a_max])
+
+        if self._cpmin_re_list:
+            y = [self._cpmin_bilinear(a, Re) for a in alpha_grid]
+            title_re = f' @ Re={Re:.0f}'
+        else:
+            y = self.Cp_min_func(alpha_grid)
+            title_re = ''
+
+        plt.plot(alpha_grid, y, '-')
+        plt.title(f'cp_min for {self.name}{title_re}')
+        plt.xlabel('Angle of attack (deg)')
+        plt.ylabel('cp_min (negative)')
+        plt.xticks(np.arange(a_min, a_max + 1, 2))
+        plt.grid(True, linestyle='--', alpha=0.6)
         
 def load_airfoil(name):
     """
@@ -344,6 +470,21 @@ def load_airfoil(name):
         else:
             defaults.append((alpha, Cl, Cd))
 
+    # --- Load cp_min tables (if present) ---
+    cpmin_tables = _read_cpmin_files(name)
+    if cpmin_tables:
+        a._cpmin_re_list = [t[0] for t in cpmin_tables]
+        if len(cpmin_tables) == 1:
+            # single-Re fallback
+            _, alpha_deg_c, cpmin_c = cpmin_tables[0]
+            a.cpmin_alpha_ = alpha_deg_c
+            a.Cp_min_func = interp1d(alpha_deg_c, cpmin_c, kind='linear',
+                                     bounds_error=False, fill_value='extrapolate')
+        else:
+            for Re_val, alpha_deg_c, cpmin_c in cpmin_tables:
+                a._cp_min_funcs[Re_val] = interp1d(alpha_deg_c, cpmin_c, kind='linear',
+                                                   bounds_error=False, fill_value='extrapolate')
+
     if with_re:
         # Multi-Re: ordena por Re
         with_re.sort(key=lambda t: t[0])
@@ -378,15 +519,21 @@ if __name__ == '__main__':
 
     # Usage:
     #   python airfoil.py NAME
-    #   python airfoil.py NAME xmin xmax
-    #   python airfoil.py NAME xmin xmax Re
+    #   python airfoil.py NAME <xmin> <xmax>
+    #   python airfoil.py NAME <xmin> <xmax> <Re> 
+    #   python airfoil.py NAME <xmin> <xmax> <Re> cpmin
     if len(sys.argv) > 3:
         x_lower_limit = float(sys.argv[2])
         x_upper_limit = float(sys.argv[3])
     if len(sys.argv) > 4:
         Re_cli = float(sys.argv[4])
 
-    ax = pl.gca()
+    ax = plt.gca()
     ax.set_xlim(x_lower_limit, x_upper_limit)
-    a.plot(Re=Re_cli)
-    pl.show()
+    
+    if len(sys.argv) > 5 and sys.argv[5].lower() == 'cpmin':
+        a.plot_cpmin(Re=Re_cli, xlim=(x_lower_limit, x_upper_limit))
+    else:
+        a.plot(Re=Re_cli)
+
+    plt.show()

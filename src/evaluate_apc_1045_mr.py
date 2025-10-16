@@ -83,6 +83,8 @@ if __name__ == "__main__":
         pitch_list=pitch_list,
     )
 
+    # ------- Evaluate in air ------------------------------
+
     list_of_scenarios = [
         Scenario(rpm=1000.0, v_inf=0.0),
         Scenario(rpm=1500.0, v_inf=0.0),
@@ -131,6 +133,28 @@ if __name__ == "__main__":
     Q_fit = np.poly1d(np.polyfit(rpm, Q, 3))(rpm_fit)
     P_fit = np.poly1d(np.polyfit(rpm, P, 3))(rpm_fit)
 
+    # --- diferenças ponto a ponto (BEMT - Horn) ---
+    mask = (rpm_fit >= 1000) & (rpm_fit <= 6000)
+
+    T_ref, T_hat = horn_T[mask], T_fit[mask]
+    P_ref, P_hat = horn_P[mask], P_fit[mask]
+
+    eT = T_hat - T_ref
+    eP = P_hat - P_ref
+
+    MAE_T  = np.mean(np.abs(eT))
+    RMSE_T = np.sqrt(np.mean(eT**2))
+    MAE_P  = np.mean(np.abs(eP))
+    RMSE_P = np.sqrt(np.mean(eP**2))
+
+    # Normalização opcional
+    NRMSE_T = RMSE_T / (T_ref.max() - T_ref.min())
+    NRMSE_P = RMSE_P / (P_ref.max() - P_ref.min())
+
+    # Texto compacto para cada subplot
+    txt_T = f"MAE = {MAE_T:.2f} N\nRMSE = {RMSE_T:.2f} N\nNRMSE = {NRMSE_T*100:.1f}%"
+    txt_P = f"MAE = {MAE_P:.2f} W\nRMSE = {RMSE_P:.2f} W\nNRMSE = {NRMSE_P*100:.1f}%"
+
     # Formatador para eixo x com separador de milhar "1,000"
     kfmt = FuncFormatter(lambda x, pos: f"{int(x):,}")
 
@@ -151,6 +175,13 @@ if __name__ == "__main__":
     ax1.set_ylabel(r"$T$ [N]")
     ax1.set_ylim(0, 15)
     ax1.xaxis.set_major_formatter(kfmt)
+
+    ax1.text(
+        0.02, 0.98, txt_T,
+        transform=ax1.transAxes, ha="left", va="top",
+        fontsize=9,
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.85)
+    )
     
     ax1.grid(True, which="both", alpha=0.25)
     ax1.legend(frameon=True, fontsize=9)
@@ -163,47 +194,37 @@ if __name__ == "__main__":
     ax2.set_xlim(1000, 6000)
     ax2.set_ylabel(r"$P$ [W]")
     ax2.xaxis.set_major_formatter(kfmt)
+
+    ax2.text(
+        0.02, 0.98, txt_P,
+        transform=ax2.transAxes, ha="left", va="top",
+        fontsize=9,
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.85)
+    )
+
     ax2.grid(True, which="both", alpha=0.25)
     ax2.legend(frameon=True, fontsize=9)
 
     plt.tight_layout()
     plt.show()
 
-    # Evaluate in water
-    # watter_solver = WaterBEMT(
-    #     scenario=Scenario(rpm=400.0, v_inf=0.0)
-    # )
 
-    # T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion = watter_solver.evaluate(rotor)     
+    # ---------------------------------------------------
 
-    # print("Evaluation Type: ", watter_solver.type)
-    # print("Thrust: ", T, "N")
-    # print("Torque: ", Q, "Nm")          
-    # print("Power: ", P, "W")   
-    # print("Advance Ratio: ", J)
-    # print("Thrust Coefficient: ", CT)
-    # print("Torque Coefficient: ", CQ)
-    # print("Power Coefficient: ", CP)
+    # ------------ Evaluate in water --------------------
+    watter_solver = WaterBEMT(
+        scenario=Scenario(rpm=700.0, v_inf=0.0)
+    )
+
+    T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion = watter_solver.evaluate(rotor)     
+
+    print("Evaluation Type: ", watter_solver.type)
+    print("Thrust: ", T, "N")
+    print("Torque: ", Q, "Nm")          
+    print("Power: ", P, "W")   
+    print("Advance Ratio: ", J)
+    print("Thrust Coefficient: ", CT)
+    print("Torque Coefficient: ", CQ)
+    print("Power Coefficient: ", CP)
     # print("Efficiency: ", eta) 
-    # print("Cavitating Proportion", cavitating_proportion)
-
-    # --- diferenças ponto a ponto (BEMT - Horn) ---
-    mask = (rpm_fit >= 1000) & (rpm_fit <= 6000)  # ajuste se quiser
-
-    T_ref, T_hat = horn_T[mask], T_fit[mask]
-    P_ref, P_hat = horn_P[mask], P_fit[mask]
-
-    eT = T_hat - T_ref
-    eP = P_hat - P_ref
-
-    MAE_T  = np.mean(np.abs(eT))
-    RMSE_T = np.sqrt(np.mean(eT**2))
-    MAE_P  = np.mean(np.abs(eP))
-    RMSE_P = np.sqrt(np.mean(eP**2))
-
-    # Normalização opcional
-    NRMSE_T = RMSE_T / (T_ref.max() - T_ref.min())
-    NRMSE_P = RMSE_P / (P_ref.max() - P_ref.min())
-
-    print(f"T: MAE={MAE_T:.3f} N, RMSE={RMSE_T:.3f} N, NRMSE={NRMSE_T*100:.2f}%")
-    print(f"P: MAE={MAE_P:.3f} W, RMSE={RMSE_P:.3f} W, NRMSE={NRMSE_P*100:.2f}%")
+    print("Cavitating Proportion", cavitating_proportion)
