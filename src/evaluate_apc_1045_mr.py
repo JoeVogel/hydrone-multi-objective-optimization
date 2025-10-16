@@ -16,8 +16,12 @@ from evaluation.aquatic_methods import WaterBEMT
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
+from pathlib import Path
 from matplotlib.ticker import FuncFormatter
+
+base_dir = Path(__file__).resolve().parent.parent 
 
 if __name__ == "__main__":
 
@@ -113,8 +117,16 @@ if __name__ == "__main__":
     Q = 2.0 * Q_single
     P = 2.0 * P_single
 
+    rpm_fit = np.linspace(0, 6000, 300)
+
+    # Horn,2019 data
+    df_horn_T = pd.read_csv(base_dir / "analysis" / "horn2019" / "propeller_10_data_T.csv")
+    df_horn_P = pd.read_csv(base_dir / "analysis" / "horn2019" / "propeller_10_data_P.csv")
+
+    horn_T = np.poly1d(np.polyfit(df_horn_T['rpm'].to_numpy(), df_horn_T['T'].to_numpy(), 3))(rpm_fit)
+    horn_P = np.poly1d(np.polyfit(df_horn_P['rpm'].to_numpy(), df_horn_P['P'].to_numpy(), 3))(rpm_fit)
+
     # Curvas suavizadas (polinômio grau 3)
-    rpm_fit = np.linspace(rpm.min(), 6000, 300)
     T_fit = np.poly1d(np.polyfit(rpm, T, 3))(rpm_fit)
     Q_fit = np.poly1d(np.polyfit(rpm, Q, 3))(rpm_fit)
     P_fit = np.poly1d(np.polyfit(rpm, P, 3))(rpm_fit)
@@ -124,15 +136,16 @@ if __name__ == "__main__":
 
     # Cores/estilos (ajuste como quiser)
     line_color = "#c00000"  # vermelho (T)
-    line_color2 = "#c00000" # vermelho (Q)
+    reference_color = "#2B9E44"
     marker_style = dict(marker="o", linestyle="None", markersize=6,
                         markerfacecolor="none", markeredgewidth=1.5)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.2), dpi=150)
 
     # --- Subplot T ---
-    ax1.plot(rpm_fit, T_fit, color=line_color, linewidth=2.0, label="APC 1045 MR")
-    ax1.plot(rpm, T, color=line_color, **marker_style)
+    ax1.plot(rpm_fit, T_fit, color=line_color, linewidth=2.0, label="BEMT - adjusted curve")
+    ax1.plot(rpm, T, color=line_color, **marker_style, label="BEMT - experiments")
+    ax1.plot(rpm_fit, horn_T, color=reference_color, linestyle="--", linewidth=2.0, label="Horn, 2019")
     ax1.set_xlabel(r"$\omega$ [rpm]")
     ax1.set_xlim(1000, 6000)
     ax1.set_ylabel(r"$T$ [N]")
@@ -143,11 +156,12 @@ if __name__ == "__main__":
     ax1.legend(frameon=True, fontsize=9)
 
     # --- Subplot Q ---
-    ax2.plot(rpm_fit, P_fit, color=line_color2, linewidth=2.0, label="APC 1045 MR")
-    ax2.plot(rpm, P, color=line_color2, **marker_style)
+    ax2.plot(rpm_fit, P_fit, color=line_color, linewidth=2.0, label="BEMT - adjusted curve")
+    ax2.plot(rpm, P, color=line_color, **marker_style, label="BEMT - experiments")
+    ax2.plot(rpm_fit, horn_P, color=reference_color, linestyle="--", linewidth=2.0, label="Horn, 2019")
     ax2.set_xlabel(r"$\omega$ [rpm]")
     ax2.set_xlim(1000, 6000)
-    ax2.set_ylabel(r"$Q$ [W]")
+    ax2.set_ylabel(r"$P$ [W]")
     ax2.xaxis.set_major_formatter(kfmt)
     ax2.grid(True, which="both", alpha=0.25)
     ax2.legend(frameon=True, fontsize=9)
@@ -156,19 +170,40 @@ if __name__ == "__main__":
     plt.show()
 
     # Evaluate in water
-    watter_solver = WaterBEMT(
-        scenario=Scenario(rpm=400.0, v_inf=0.0)
-    )
+    # watter_solver = WaterBEMT(
+    #     scenario=Scenario(rpm=400.0, v_inf=0.0)
+    # )
 
-    T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion = watter_solver.evaluate(rotor)     
+    # T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion = watter_solver.evaluate(rotor)     
 
-    print("Evaluation Type: ", watter_solver.type)
-    print("Thrust: ", T, "N")
-    print("Torque: ", Q, "Nm")          
-    print("Power: ", P, "W")   
-    print("Advance Ratio: ", J)
-    print("Thrust Coefficient: ", CT)
-    print("Torque Coefficient: ", CQ)
-    print("Power Coefficient: ", CP)
-    print("Efficiency: ", eta) 
-    print("Cavitating Proportion", cavitating_proportion)
+    # print("Evaluation Type: ", watter_solver.type)
+    # print("Thrust: ", T, "N")
+    # print("Torque: ", Q, "Nm")          
+    # print("Power: ", P, "W")   
+    # print("Advance Ratio: ", J)
+    # print("Thrust Coefficient: ", CT)
+    # print("Torque Coefficient: ", CQ)
+    # print("Power Coefficient: ", CP)
+    # print("Efficiency: ", eta) 
+    # print("Cavitating Proportion", cavitating_proportion)
+
+    # --- diferenças ponto a ponto (BEMT - Horn) ---
+    mask = (rpm_fit >= 1000) & (rpm_fit <= 6000)  # ajuste se quiser
+
+    T_ref, T_hat = horn_T[mask], T_fit[mask]
+    P_ref, P_hat = horn_P[mask], P_fit[mask]
+
+    eT = T_hat - T_ref
+    eP = P_hat - P_ref
+
+    MAE_T  = np.mean(np.abs(eT))
+    RMSE_T = np.sqrt(np.mean(eT**2))
+    MAE_P  = np.mean(np.abs(eP))
+    RMSE_P = np.sqrt(np.mean(eP**2))
+
+    # Normalização opcional
+    NRMSE_T = RMSE_T / (T_ref.max() - T_ref.min())
+    NRMSE_P = RMSE_P / (P_ref.max() - P_ref.min())
+
+    print(f"T: MAE={MAE_T:.3f} N, RMSE={RMSE_T:.3f} N, NRMSE={NRMSE_T*100:.2f}%")
+    print(f"P: MAE={MAE_P:.3f} W, RMSE={RMSE_P:.3f} W, NRMSE={NRMSE_P*100:.2f}%")
