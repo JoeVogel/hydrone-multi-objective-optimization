@@ -33,8 +33,8 @@ class AerialBEMT(EvaluationMethod):
         T, Q, P, sec_df = self.solver.run(rotor)
         J,CT,CQ,CP,eta = self.solver.rotor_coeffs(T, Q, P)
 
-        # print("RE minimo: ", sec_df['Re'][4])
-        # print("RE maximo: ", sec_df['Re'].max())
+        print("RE minimo: ", sec_df['Re'].min())
+        print("RE maximo: ", sec_df['Re'].max())
 
         return T, Q, P, J, CT, CQ, CP, eta
         

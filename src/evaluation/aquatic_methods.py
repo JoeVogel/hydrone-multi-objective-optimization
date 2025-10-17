@@ -23,7 +23,7 @@ class WaterBEMT(EvaluationMethod):
     def __init__(self, scenario:Scenario):
         """ Initializes the WaterBEMT evaluation method."""
         super().__init__(evaluation_type=EvaluationType.AQUATIC, fidelity_level=FidelityLevel.LOW)
-        
+
         self.fluid = Fluid(FluidType.WATER)
         self.scenario = scenario
 
@@ -132,8 +132,8 @@ class WaterBEMT(EvaluationMethod):
         T, Q, P, sec_df = self.solver.run(rotor)
         J,CT,CQ,CP,eta = self.solver.rotor_coeffs(T, Q, P)
 
-        # print("RE minimo: ", sec_df['Re'][4])
-        # print("RE maximo: ", sec_df['Re'].max())
+        print("RE minimo: ", sec_df['Re'].min())
+        print("RE maximo: ", sec_df['Re'].max())
 
         cavitating_proportion = 0.0
 

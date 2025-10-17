@@ -113,6 +113,12 @@ def _read_cpmin_files(name: str):
     Load cp_min CSV files for an airfoil from ./cpmin.
     Expected columns: angle_deg, cp_min. Cp_min is negative.
     Filenames: cpmin_<airfoil>_<Re>.csv  (case-insensitive, e.g., cpmin_naca4412_100000.csv)
+
+    Cpmin refers to the minimum value of the pressure coefficient (\(C_{p}\)) on the airfoil's surface at a 
+    given angle of attack. This value indicates the point of lowest pressure, which is a critical parameter for 
+    understanding flow behavior, as it can precede flow separation and is directly related to the airfoil's
+    lift characteristics
+
     Returns a list of (Re, alpha_deg_array, cpmin_array).
     """
     norm = re.sub(r'[^a-z0-9]', '', name.lower())
