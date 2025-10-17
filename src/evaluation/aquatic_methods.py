@@ -31,24 +31,19 @@ class WaterBEMT(EvaluationMethod):
 
     def _compute_cavitation_sections(self, sections_df: pd.DataFrame, depth: float = 0.0) -> pd.DataFrame:
         """
-        Compute the local cavitation number and flag cavitation risk per blade section
-        using a simplified Cp_min correlation based on alpha (deg) and thickness ratio t/c.
+        Compute the local cavitation number and flag cavitation risk per blade section.
 
         This method is inspired by and follows the empirical trends and rationale described in:
             Amromin, E.; Rozhdestvensky, K. (2022). "Correlation between Pressure Minima and Cavitation
             Inception Numbers: Fundamentals and Hydrofoil Flows." Journal of Marine Science and Engineering.
-        Specifically, the method uses a correlation between |Cp|min and the cavitation inception number that
-        increases with both angle of attack and relative thickness, and apply it section-wise using local
-        velocities from BEMT.
 
         What the method does
         --------------------
-        1) Applies a radial cutoff (r/R >= 0.2), consistent with the BEMT discretization.
-        2) Validates required inputs per section ('foil' and 'alpha'); invalid rows are skipped with a warning.
-        3) Computes the local cavitation number sigma from static head and local relative speed.
-        4) Estimates Cp_min via an empirical difference D_sigma = f(alpha, t/c), following the trends reported
-        in the cited article.
-        5) Flags cavitation risk if Cp_min + sigma <= 0.
+        1) Validates required inputs per section ('foil' and 'alpha'); invalid rows are skipped with a warning.
+        2) Computes the local cavitation number sigma from static head and local relative speed.
+        3) Get Cp_min from XFOIL data.
+        4) Compares Cp_min with -sigma to determine cavitation inception.
+        5) Flags cavitation risk if Cp_min <= -sigma.
 
         Mathematical definitions
         ------------------------
@@ -58,18 +53,11 @@ class WaterBEMT(EvaluationMethod):
         Local cavitation number:
             sigma = (p_inf - p_v) / (0.5 * rho * U^2)
 
-        Empirical correlation for the difference between |Cp|min and sigma_i:
-            D_sigma = a1 * (alpha / 10) + a2 * (t/c) / 0.1
-
-        Correlated minimum pressure coefficient:
-            Cp_min = -(sigma + D_sigma)
-
         Cavitation inception criterion:
             # Cavitation starts when the local pressure drops to or below the vapor pressure: p <= p_v.
-            # the condition p <= p_v becomes Cp <= -sigma. Using the most negative surface value Cp_min,
-            # cavitation risk is flagged when Cp_min + sigma <= 0 (here sigma uses the local U at the section).
+            # the condition p <= p_v becomes Cp <= -sigma. Using the most negative surface value Cp_min
 
-            cavitation_risk = (Cp_min + sigma) <= 0
+            cavitation_risk = Cp_min <= -sigma
 
         Parameters
         ----------
@@ -116,10 +104,11 @@ class WaterBEMT(EvaluationMethod):
                 results.append((np.nan, np.nan, False))
                 continue
             
-            # Local sigma (uses local U)
+            # Local cavitation number calculation
             sigma_cav = (p_inf - pv) / (0.5 * rho * U**2)
 
-            cavitates = (Cp_min + sigma_cav) <= 0.0
+            # Cavitation inception criterion
+            cavitates = Cp_min < -sigma_cav
 
             results.append((sigma_cav, Cp_min, bool(cavitates)))
 
