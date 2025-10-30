@@ -74,9 +74,9 @@ class NSGAII:
             # Scenario (for traceability)
             "aerial_rpm", "aerial_v_inf", "aquatic_rpm", "aquatic_v_inf",
             # aerial metrics
-            "aerial_T","aerial_Q","aerial_P","aerial_J","aerial_CT","aerial_CQ","aerial_CP","aerial_eta","aerial_fitness",
+            "aerial_T","aerial_Q","aerial_P","aerial_J","aerial_CT","aerial_CQ","aerial_CP","aerial_eta", "FM", "aerial_fitness",
             # water metrics
-            "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta","aquatic_fitness",
+            "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta", "cavitating_proportion", "QI","aquatic_fitness",
         ]
 
         with self.eval_csv_path.open("w", newline="") as f:
@@ -122,6 +122,7 @@ class NSGAII:
             "aerial_CQ":  "" if aerial  is None else aerial.get("CQ",""),
             "aerial_CP":  "" if aerial  is None else aerial.get("CP",""),
             "aerial_eta": "" if aerial  is None else aerial.get("eta",""),
+            "FM": "" if aerial  is None else aerial.get("FM",""),
             "aerial_fitness": getattr(individual, "aerial_fitness", ""),
 
             "aquatic_T":   "" if aquatic is None else aquatic.get("T",""),
@@ -132,6 +133,8 @@ class NSGAII:
             "aquatic_CQ":  "" if aquatic is None else aquatic.get("CQ",""),
             "aquatic_CP":  "" if aquatic is None else aquatic.get("CP",""),
             "aquatic_eta": "" if aquatic is None else aquatic.get("eta",""),
+            "cavitating_proportion": "" if aquatic is None else aquatic.get("cavitating_proportion",""),
+            "QI": "" if aquatic is None else aquatic.get("QI",""),
             "aquatic_fitness": getattr(individual, "aquatic_fitness", ""),
         }
 
@@ -166,8 +169,8 @@ class NSGAII:
                 except Exception as e:
                     logger.debug(f"[Front CSV] Aerial eval failed: {e}")
                 try:
-                    wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta = self.aquatic_evaluation_method.evaluate(rotor)
-                    w = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta}
+                    wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
+                    w = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI}
                 except Exception as e:
                     logger.debug(f"[Front CSV] Aquatic eval failed: {e}")
 
@@ -205,21 +208,29 @@ class NSGAII:
                 aquatic = None
                 
                 try:
-                    aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta = self.aerial_evaluation_method.evaluate(rotor)
+                    aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
 
-                    # TODO: define air fitness function
-                    individual.aerial_fitness = aEta
-                    aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta}
+                    if (aJ == 0):
+                        individual.aerial_fitness = FM  # Usar Figure of Merit como fitness em condição de hover
+                    else:
+                        individual.aerial_fitness = aEta  # Usar eficiência normal em outras condições
+                        
+                    aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM}
                 except Exception as e:
                     logger.debug(f"[NSGA] Aerial eval failed for individual: {e}")
                     individual.aerial_fitness = 0.0  # penalização
                 
                 try:
-                    wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta = self.aquatic_evaluation_method.evaluate(rotor)
+                    wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
+
+                    # TODO: definir aplicação de penalidade por cavitação
                     
-                    # TODO: define water fitness function
-                    individual.aquatic_fitness = wEta
-                    aquatic = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta}
+                    if (wJ == 0):
+                        individual.aquatic_fitness = QI  # Usar Quality Index como fitness em condição de amarra
+                    else:
+                        individual.aquatic_fitness = wEta  # Usar eficiência normal em outras condições
+
+                    aquatic = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI}
                 except Exception as e:
                     logger.debug(f"[NSGA] Aquatic eval failed for individual: {e}")
                     individual.aquatic_fitness = 0.0  # penalização
