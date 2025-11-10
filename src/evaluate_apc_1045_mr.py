@@ -267,7 +267,7 @@ if __name__ == "__main__":
 
     # Geometria principal (do arquivo do 10x4.5 MR)
     diameter     = 0.254      # 10 in
-    radius_hub   = 0.02032    # 0.8 in  (HUBTRA)
+    hub_radius   = 0.02032    # 0.8 in  (HUBTRA)
     n_blades     = 2
 
     # Estações radiais (m) — do arquivo (0.80" ... 5.00")
@@ -316,7 +316,7 @@ if __name__ == "__main__":
     rotor = Rotor(
         n_blades=n_blades,
         diameter=diameter,
-        radius_hub=radius_hub,
+        hub_radius = hub_radius,
         number_of_sections=number_of_sections,
         foil_list=foil_list,
         chord_list=chord_list,

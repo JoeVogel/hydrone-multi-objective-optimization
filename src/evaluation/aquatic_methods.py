@@ -121,6 +121,12 @@ class WaterBEMT(EvaluationMethod):
 
         The QI provides a non-dimensional figure of merit based on thrust and torque coefficients.
 
+        References:
+        ------------------- 
+        Design of Propulsion and Electric Power Generation Systems.
+        Hans Klein Woud and Douwe Stapersma
+        2019
+
         Formula:
             QI(J=0) = (1 / (π * √(2π))) * (K_T^(3/2) / K_Q)
 

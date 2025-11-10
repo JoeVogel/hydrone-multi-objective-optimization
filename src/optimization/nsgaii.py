@@ -24,35 +24,53 @@ https://ieeexplore.ieee.org/abstract/document/996017?casa_token=dDGNqrFAX2YAAAAA
 # https://github.com/smkalami/nsga2-in-python/blob/main/nsga2.py
 
 class NSGAII:
-    def __init__(self, population_size, maximum_generations, aerial_evaluation_method: EvaluationMethod, aquatic_evaluation_method: EvaluationMethod, seed=0, mutation_rate=0.1):
-        self.population_size            = population_size
-        self.maximum_generations        = maximum_generations
+    def __init__(self, configs, aerial_evaluation_method: EvaluationMethod, aquatic_evaluation_method: EvaluationMethod):
+        
+        # TODO: adicionar checks nas configurações
+        
+        self.diameter                   = configs["problem"]["diameter"]
+        self.number_of_sections         = configs["problem"]["number_of_sections"]
+        self.hub_radius                 = configs["problem"]["hub_radius"]
+
+        self.population_size            = configs["nsga2"]["pop_size"]
+        self.maximum_generations        = configs["nsga2"]["generations"]
+        self.seed                       = configs["nsga2"]["seed"]
+        self.mutation_rate              = configs["nsga2"]["mutation_rate"]
+        
+        self.decision_variables         = configs["variables"]
+
         self.aerial_evaluation_method   = aerial_evaluation_method
         self.aquatic_evaluation_method  = aquatic_evaluation_method
-        self.seed                       = seed
-        self.mutation_rate              = mutation_rate
-        
-        csv_path = os.path.join(os.path.dirname(__file__), "../../data/decision_variables.csv")
-        df = pd.read_csv(csv_path)
-        
-        self.min_alpha = df["min_alpha"][0]
-        self.max_alpha = df["max_alpha"][0]
-        self.diameter = df["diameter"][0]
-        self.min_blade_number = df["min_blade_num"][0]
-        self.max_blade_number = df["max_blade_num"][0]
-        self.foil = df["foil"][0]
-        self.number_of_sections = df["number_of_sections"][0]
 
-        # TODO: definir chord_list e radius_hub como parâmetros de entrada ou calcular dinamicamente
-        self.chord_list = [
-            0.01700, 0.01660, 0.01620, 0.01580, 0.01540,
-            0.01500, 0.01440, 0.01380, 0.01320, 0.01260,
-            0.01220, 0.01180, 0.01140, 0.01100, 0.01060,
-            0.01020, 0.00980, 0.00940, 0.00900, 0.00860
-            ]
-        self.radius_hub = 0.0025
+        alpha       = self.get_var("alpha")
+        blades      = self.get_var("n_blades")
+        foil_list   = self.get_var("airfoil_list")
+        chord       = self.get_var("chord")
+
+        self.min_alpha          = alpha["min"] 
+        self.max_alpha          = alpha["max"]
+        self.min_blade_number   = blades["min"]
+        self.max_blade_number   = blades["max"]
+        self.foil_list          = foil_list["choices"]
+        self.min_chord          = chord["min"]
+        self.max_chord          = chord["max"]
+
+        # TODO: definir chord_list e hub_radius como parâmetros de entrada ou calcular dinamicamente
+        # self.chord_list = [
+        #     0.01700, 0.01660, 0.01620, 0.01580, 0.01540,
+        #     0.01500, 0.01440, 0.01380, 0.01320, 0.01260,
+        #     0.01220, 0.01180, 0.01140, 0.01100, 0.01060,
+        #     0.01020, 0.00980, 0.00940, 0.00900, 0.00860
+        #     ]
+        
 
         self._init_run_outputs()
+
+    def get_var(self, name):
+        for v in self.decision_variables:
+            if v["name"] == name:
+                return v
+        raise KeyError(f"Variable '{name}' not found in configuration")
 
     def _init_run_outputs(self):
         """Creates data/results/<datetime> and initializes evaluations.csv with header."""
@@ -69,7 +87,7 @@ class NSGAII:
             # identification
             "generation", "pop_index",
             # decision variables / geometry
-            "D", "B", "radius_hub", "number_of_sections",
+            "D", "B", "hub_radius", "number_of_sections",
             "foil_list", "chord_list", "pitch_list",
             # Scenario (for traceability)
             "aerial_rpm", "aerial_v_inf", "aquatic_rpm", "aquatic_v_inf",
@@ -102,7 +120,7 @@ class NSGAII:
 
             "D": getattr(individual, "D", ""),
             "B": getattr(individual, "B", ""),
-            "radius_hub": getattr(individual, "radius_hub", ""),
+            "hub_radius": getattr(individual, "hub_radius", ""),
             "number_of_sections": getattr(individual, "number_of_sections", ""),
 
             "foil_list": self._serialize_list(getattr(individual, "foil_list", None)),
@@ -155,7 +173,7 @@ class NSGAII:
                 rotor = Rotor(
                     n_blades=ind.B,
                     diameter=ind.D,
-                    radius_hub=ind.radius_hub,
+                    hub_radius=ind.hub_radius,
                     number_of_sections=getattr(ind, "number_of_sections", self.number_of_sections),
                     foil_list=getattr(ind, "foil_list", None),
                     chord_list=getattr(ind, "chord_list", None),
@@ -197,7 +215,7 @@ class NSGAII:
                 rotor = Rotor(
                     n_blades=individual.B,
                     diameter=individual.D,
-                    radius_hub=individual.radius_hub,
+                    hub_radius=individual.hub_radius,
                     number_of_sections=self.number_of_sections,
                     foil_list=individual.foil_list,
                     chord_list=individual.chord_list,
@@ -280,7 +298,7 @@ class NSGAII:
                 B=random.randint(self.min_blade_number, self.max_blade_number),
                 chord_list=self.chord_list,  
                 foil=self.foil,
-                radius_hub=self.radius_hub,  
+                hub_radius=self.hub_radius,  
                 number_of_sections=self.number_of_sections  
             )
 
@@ -433,7 +451,7 @@ class NSGAII:
             B=int((parent1.B + parent2.B) / 2),
             chord_list=self.chord_list, # Assuming chord_list is the same for every individual
             foil=self.foil, # Assuming chord_list is the same for every individual
-            radius_hub=self.radius_hub, # Assuming chord_list is the same for every individual
+            hub_radius=self.hub_radius, # Assuming chord_list is the same for every individual
             number_of_sections=self.number_of_sections # Assuming chord_list is the same for every individual
         )
 

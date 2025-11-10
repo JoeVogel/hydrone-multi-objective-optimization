@@ -1,4 +1,6 @@
 import logging
+import tomllib
+import os
 
 # Configurar o log para imprimir no console
 logging.basicConfig(
@@ -17,8 +19,19 @@ from optimization.nsgaii        import NSGAII
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from pathlib import Path
+
+def load_config_toml(path: str):
+    with open(path, "rb") as f:
+        return tomllib.load(f)
 
 if __name__ == "__main__":
+
+
+    # Load configurations
+    config_base_dir = Path(__file__).resolve().parent.parent
+    config_path = config_base_dir / "data" / "configuration.toml"
+    configs = load_config_toml(config_path)
     
     # Initialize evaluation methods
     aerial_evaluator = AerialBEMT(
@@ -30,7 +43,7 @@ if __name__ == "__main__":
         scenario=Scenario(rpm=400.0, v_inf=0.0)
     )
     
-    optimizer = NSGAII(20, 10, aerial_evaluator, aquatic_evaluator)
+    optimizer = NSGAII(configs, aerial_evaluator, aquatic_evaluator)
     
     pareto_fronts = optimizer.run()
 

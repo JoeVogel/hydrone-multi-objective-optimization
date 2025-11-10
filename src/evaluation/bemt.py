@@ -88,13 +88,7 @@ class Solver:
         # Angular momentum
         Q = 0.0
 
-        # r_cut = self.rotor.blade_radius * 0.20  # 20% do raio
-
         for sec in rotor.sections:
-
-            # TODO: encontrar literatura que justifique esse corte de 20% no miolo para BEMT
-            # if sec.radius < r_cut:
-            #     continue  # não computa forças no miolo
 
             if sec.radius < rotor.blade_radius:
                 v = self.scenario.v_inf

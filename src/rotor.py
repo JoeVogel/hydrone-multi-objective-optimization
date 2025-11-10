@@ -15,16 +15,16 @@ class Rotor:
     Holds rotor properties and a list of all airfoil sections.
     :param int n_blades: Number of blades
     :param float diameter: Rotor diameter
-    :param float radius_hub: Radius of the hub
+    :param float hub_radius: Radius of the hub
     :param list section_list: List of airfoil names
     :param list chord_list: List of chord lengths for each section
     :param list radius_list: List of radii for each section
     :param list pitch_list: List of pitch angles for each section
     """
-    def __init__(self, n_blades, diameter, radius_hub, number_of_sections, foil_list, chord_list, pitch_list):
+    def __init__(self, n_blades, diameter, hub_radius, number_of_sections, foil_list, chord_list, pitch_list):
         self.n_blades = n_blades
         self.diameter = diameter
-        self.radius_hub = radius_hub
+        self.hub_radius = hub_radius
         self.number_of_sections = number_of_sections
 
         _, centers = self.generate_rotor_section_points()
@@ -33,7 +33,7 @@ class Rotor:
         c = chord_list
         r = centers
         
-        S  = self.blade_radius - self.radius_hub
+        S  = self.blade_radius - self.hub_radius
         dr = [S / self.number_of_sections] * self.number_of_sections
         
         self.alpha = pitch_list
@@ -42,7 +42,7 @@ class Rotor:
             sec = Section(load_airfoil(s[i]), float(r[i]), float(dr[i]), radians(self.alpha[i]), float(c[i]), self)
             self.sections.append(sec)
         
-        self.radius_hub = radius_hub
+        self.hub_radius = hub_radius
 
         self.precalc(twist=0.0)
 
@@ -56,11 +56,11 @@ class Rotor:
         self.tip_radius = self.diameter / 2.0  # Tip radius of the propeller
         self.blade_radius = self.tip_radius      
 
-        S = self.blade_radius - self.radius_hub  # usable span
+        S = self.blade_radius - self.hub_radius  # usable span
         N = self.number_of_sections
 
-        frontiers = [self.radius_hub + (i+1)*S/N for i in range(N)]
-        centers   = [self.radius_hub + (i+0.5)*S/N for i in range(N)]
+        frontiers = [self.hub_radius + (i+1)*S/N for i in range(N)]
+        centers   = [self.hub_radius + (i+0.5)*S/N for i in range(N)]
         return frontiers, centers
 
     def precalc(self, twist):
@@ -152,7 +152,7 @@ class Section:
         B   = self.rotor.n_blades
         r   = self.radius
         R   = self.rotor.blade_radius
-        rh  = self.rotor.radius_hub
+        rh  = self.rotor.hub_radius
 
         # Numerical guard rails
         eps_sin = 1e-12
@@ -221,7 +221,7 @@ class Section:
         """
         Cl_inv = sqrt(Cl**2+Cd**2)
         twist = alpha - self.pitch
-        r = self.radius - self.rotor.radius_hub
+        r = self.radius - self.rotor.hub_radius
         c = self.chord
         
         a = 2.2
