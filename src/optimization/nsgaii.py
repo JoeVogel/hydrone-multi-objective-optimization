@@ -45,24 +45,14 @@ class NSGAII:
         alpha       = self.get_var("alpha")
         blades      = self.get_var("n_blades")
         foil_list   = self.get_var("airfoil_list")
-        chord       = self.get_var("chord")
 
         self.min_alpha          = alpha["min"] 
         self.max_alpha          = alpha["max"]
         self.min_blade_number   = blades["min"]
         self.max_blade_number   = blades["max"]
-        self.foil_list          = foil_list["choices"]
-        self.min_chord          = chord["min"]
-        self.max_chord          = chord["max"]
+        self.foil_options          = foil_list["choices"]
 
-        # TODO: definir chord_list e hub_radius como parâmetros de entrada ou calcular dinamicamente
-        # self.chord_list = [
-        #     0.01700, 0.01660, 0.01620, 0.01580, 0.01540,
-        #     0.01500, 0.01440, 0.01380, 0.01320, 0.01260,
-        #     0.01220, 0.01180, 0.01140, 0.01100, 0.01060,
-        #     0.01020, 0.00980, 0.00940, 0.00900, 0.00860
-        #     ]
-        
+        self.hub_diameter = self.hub_radius * 2 
 
         self._init_run_outputs()
 
@@ -201,86 +191,28 @@ class NSGAII:
                     target_path=self.front_csv_path
                 )
 
-    def run(self):
+    def _generate_uniform_foil_list(self) -> list[str]:
         """
-        Executes the NSGA-II optimization process and returns Pareto fronts.
+        Generates a uniform foil list for all blade sections.
+        The foil is randomly selected from the available foil choices.
+        Returns:
+            list[str]: A list containing the foil name for each section.
         """
-        population = self._initialize_population()
-        for generation in range(1, self.maximum_generations + 1):
-            logger.info(f"Generation {generation}/{self.maximum_generations}")
 
-            # Evaluate population
-            for idx, individual in enumerate(population):
+        # Randomly selects the foil from the available choices
+        foil_choice = random.choice(self.foil_options)
 
-                rotor = Rotor(
-                    n_blades=individual.B,
-                    diameter=individual.D,
-                    hub_radius=individual.hub_radius,
-                    number_of_sections=self.number_of_sections,
-                    foil_list=individual.foil_list,
-                    chord_list=individual.chord_list,
-                    pitch_list=individual.pitch_list
-                )
+        return [foil_choice] * self.number_of_sections
+    
+    def _generate_uniform_pitch_list(self) -> list[float]:
+        """
+        Generates a uniform pitch list for all blade sections based on the min max alpha.
+        Returns:
+            list[float]: A list containing the pitch value for each section.
+        """
+        pitch_value = random.uniform(self.min_alpha, self.max_alpha)
 
-                aerial = None
-                aquatic = None
-                
-                try:
-                    aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
-
-                    if (aJ == 0):
-                        individual.aerial_fitness = FM  # Usar Figure of Merit como fitness em condição de hover
-                    else:
-                        individual.aerial_fitness = aEta  # Usar eficiência normal em outras condições
-                        
-                    aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM}
-                except Exception as e:
-                    logger.debug(f"[NSGA] Aerial eval failed for individual: {e}")
-                    individual.aerial_fitness = 0.0  # penalização
-                
-                try:
-                    wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
-
-                    # TODO: definir aplicação de penalidade por cavitação
-                    
-                    if (wJ == 0):
-                        individual.aquatic_fitness = QI  # Usar Quality Index como fitness em condição de amarra
-                    else:
-                        individual.aquatic_fitness = wEta  # Usar eficiência normal em outras condições
-
-                    aquatic = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI}
-                except Exception as e:
-                    logger.debug(f"[NSGA] Aquatic eval failed for individual: {e}")
-                    individual.aquatic_fitness = 0.0  # penalização
-                
-                self._append_eval_row(
-                    generation=generation,
-                    pop_index=idx,
-                    individual=individual,
-                    aerial=aerial,
-                    aquatic=aquatic
-                )
-
-            # Perform non-dominated sorting
-            fronts = self._fast_non_dominated_sort(population)
-
-            # If last generation, dont't create next generation
-            if (generation == self.maximum_generations):
-                logger.info("Maximum generations reached, stopping.")
-                break
-
-            # Calculate crowding distance for each front
-            for front in fronts:
-                self._crowding_distance(front)
-
-            # Selection, crossover, and mutation
-            population = self._create_next_generation(population, fronts)
-        
-        if fronts and len(fronts[0]) > 0:
-            self._write_pareto_front_csv(fronts[0])
-            logger.info(f"[NSGA-II] Pareto front salvo em {self.front_csv_path}")
-
-        return fronts
+        return [pitch_value] * self.number_of_sections
 
     def _initialize_population(self):
         """
@@ -292,12 +224,16 @@ class NSGAII:
         
         for _ in range(self.population_size):
 
+            chord_list = [self.hub_diameter] * self.number_of_sections  # default chord list
+            foil_list  = self._generate_uniform_foil_list()
+            pitch_list = self._generate_uniform_pitch_list()
+
             individual = Individual(
-                alpha=round(random.uniform(self.min_alpha, self.max_alpha), 1), # round para ter apenas 1 casa decimal
                 D=self.diameter,
                 B=random.randint(self.min_blade_number, self.max_blade_number),
-                chord_list=self.chord_list,  
-                foil=self.foil,
+                pitch_list=pitch_list,
+                chord_list=chord_list,  
+                foil_list=foil_list,
                 hub_radius=self.hub_radius,  
                 number_of_sections=self.number_of_sections  
             )
@@ -469,4 +405,84 @@ class NSGAII:
         if random.random() < mutation_rate:
             individual.B += random.randint(-1, 1)  # Como B é inteiro, usar randint é melhor
             individual.B = max(self.min_blade_number, min(individual.B, self.max_blade_number))  # Garante que B esteja dentro dos limites
-            
+
+    def run(self):
+        """
+        Executes the NSGA-II optimization process and returns Pareto fronts.
+        """
+        population = self._initialize_population()
+        for generation in range(1, self.maximum_generations + 1):
+            logger.info(f"Generation {generation}/{self.maximum_generations}")
+
+            # Evaluate population
+            for idx, individual in enumerate(population):
+
+                rotor = Rotor(
+                    n_blades=individual.B,
+                    diameter=individual.D,
+                    hub_radius=individual.hub_radius,
+                    number_of_sections=self.number_of_sections,
+                    foil_list=individual.foil_list,
+                    chord_list=individual.chord_list,
+                    pitch_list=individual.pitch_list
+                )
+
+                aerial = None
+                aquatic = None
+                
+                try:
+                    aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
+
+                    if (aJ == 0):
+                        individual.aerial_fitness = FM  # Usar Figure of Merit como fitness em condição de hover
+                    else:
+                        individual.aerial_fitness = aEta  # Usar eficiência normal em outras condições
+                        
+                    aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM}
+                except Exception as e:
+                    logger.debug(f"[NSGA] Aerial eval failed for individual: {e}")
+                    individual.aerial_fitness = 0.0  # penalização
+                
+                try:
+                    wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
+
+                    # TODO: definir aplicação de penalidade por cavitação
+                    
+                    if (wJ == 0):
+                        individual.aquatic_fitness = QI  # Usar Quality Index como fitness em condição de amarra
+                    else:
+                        individual.aquatic_fitness = wEta  # Usar eficiência normal em outras condições
+
+                    aquatic = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI}
+                except Exception as e:
+                    logger.debug(f"[NSGA] Aquatic eval failed for individual: {e}")
+                    individual.aquatic_fitness = 0.0  # penalização
+                
+                self._append_eval_row(
+                    generation=generation,
+                    pop_index=idx,
+                    individual=individual,
+                    aerial=aerial,
+                    aquatic=aquatic
+                )
+
+            # Perform non-dominated sorting
+            fronts = self._fast_non_dominated_sort(population)
+
+            # If last generation, dont't create next generation
+            if (generation == self.maximum_generations):
+                logger.info("Maximum generations reached, stopping.")
+                break
+
+            # Calculate crowding distance for each front
+            for front in fronts:
+                self._crowding_distance(front)
+
+            # Selection, crossover, and mutation
+            population = self._create_next_generation(population, fronts)
+        
+        if fronts and len(fronts[0]) > 0:
+            self._write_pareto_front_csv(fronts[0])
+            logger.info(f"[NSGA-II] Pareto front salvo em {self.front_csv_path}")
+
+        return fronts           
