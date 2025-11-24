@@ -286,7 +286,7 @@ class NSGAII:
         def profile_linear():
             """Linear chord + linear pitch + foil in blocks"""
             # chord
-            root = random.uniform(0.6*self.hub_diameter, self.hub_diameter)
+            root = 0.6 * self.hub_diameter
             tip  = random.uniform(0.15*root, 0.6*root)
             chord = [root + (tip - root)*(i/(n-1)) for i in range(n)]
 
@@ -309,7 +309,7 @@ class NSGAII:
             """Exponential chord decay + random local twist"""
             r = [i/(n-1) for i in range(n)]
 
-            root = random.uniform(0.7*self.hub_diameter, self.hub_diameter)
+            root = 0.6 * self.hub_diameter
             chord = [max(min_chord, root * (0.25 + 0.75 * (1 - ri)**2)) for ri in r]
 
             base = random.uniform(self.min_alpha, self.max_alpha)
@@ -324,7 +324,7 @@ class NSGAII:
             """S-curve chord + smooth twist pitch"""
             r = [i/(n-1) for i in range(n)]
 
-            root = random.uniform(0.5*self.hub_diameter, self.hub_diameter)
+            root = 0.6 * self.hub_diameter
             tip  = random.uniform(0.15, 0.25) * root
             chord = [root + (tip-root)*(3*r*r - 2*r*r*r) for r in r]
             chord = [max(min_chord, c) for c in chord]
@@ -545,8 +545,8 @@ class NSGAII:
             return chord_list
 
         chord_list = list(chord_list)
-        if chord_list[0] > self.hub_diameter * 0.5:
-            chord_list[0] = self.hub_diameter * 0.5
+        if chord_list[0] > self.hub_diameter * 0.6:
+            chord_list[0] = self.hub_diameter * 0.6
         return chord_list
 
     def _adjust_phisical_constraints(self, pitch_list, chord_list):
