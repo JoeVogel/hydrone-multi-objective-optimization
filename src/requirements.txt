@@ -4,3 +4,4 @@ pandas>=2.2.0
 scipy>=1.15.1
 PyQt5>=5.15.11
 pytest>=9.0.1
+plotly>=6.5.0

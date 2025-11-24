@@ -1,0 +1,467 @@
+import numpy as np
+import pandas as pd
+from pathlib import Path
+import plotly.graph_objects as go
+import plotly.express as px
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import art3d
+from matplotlib.patches import Circle
+
+# ------ Propeller plotting utils ------
+airfoil_coords_base_path = Path("../../data/airfoil_coords")
+
+e63_coords_path      = airfoil_coords_base_path / "e63-il.csv"
+naca0012_coords_path = airfoil_coords_base_path / "naca4412-il.csv"
+
+def load_airfoil_csv(path: Path):
+    # pula a primeira linha (cabeçalho: X,Y ou algo do tipo)
+    arr = np.loadtxt(path, delimiter=",", skiprows=1)
+    # garante que é Nx2
+    if arr.ndim == 1:
+        arr = arr.reshape(-1, 2)
+    return arr
+
+airfoil_coords_dict = {
+    "NACA0012": load_airfoil_csv(naca0012_coords_path),
+    "E63":      load_airfoil_csv(e63_coords_path),
+}
+
+def _parse_list_field(field, cast_func=None):
+    """
+    Converte automaticamente:
+    - listas reais
+    - tuplas
+    - strings no formato "v1;v2;v3" (com ou sem colchetes)
+    """
+    if isinstance(field, list):
+        return field
+    if isinstance(field, tuple):
+        return list(field)
+    if isinstance(field, str):
+        parts = field.replace("[", "").replace("]", "").split(";")
+        parts = [p.strip() for p in parts if p.strip() != ""]
+        if cast_func:
+            return [cast_func(p) for p in parts]
+        return parts
+    raise ValueError(f"Campo não reconhecido como lista: {field!r}")
+
+def plot_propeller_from_row(row, title_suffix="Propeller"):
+    """
+    Plota em 3D a geometria de um hélice a partir de uma linha de DataFrame.
+
+    Campos esperados em `row`:
+      - D: diâmetro do hélice
+      - B: número de pás
+      - hub_radius: raio do hub
+      - number_of_sections: número de seções na pá
+      - foil_list: lista (ou string) com o aerofólio de cada seção
+      - chord_list: lista (ou string) com corda de cada seção (mesmas unidades de D)
+      - pitch_list: lista (ou string) com o *twist* da seção
+        (em graus OU em radianos – detectado automaticamente)
+
+    Desenha apenas o SEGMENTO DE CORDA de cada seção, com cor
+    dependente do aerofólio (E63 vermelho, NACA0012 azul).
+    """
+
+    # --- parâmetros básicos ---
+    D = float(row["D"])
+    B = int(row["B"])
+    hub_radius = float(row["hub_radius"])
+    n_sec = int(row["number_of_sections"])
+
+    # --- converte campos em listas/arrays ---
+    foil_list  = _parse_list_field(row["foil_list"],  cast_func=str)
+    chord_list = np.asarray(_parse_list_field(row["chord_list"], cast_func=float))
+    pitch_raw  = np.asarray(_parse_list_field(row["pitch_list"],  cast_func=float))
+
+    if len(foil_list) != n_sec or len(chord_list) != n_sec or len(pitch_raw) != n_sec:
+        raise ValueError(
+            "foil_list, chord_list e pitch_list devem ter tamanho igual a number_of_sections"
+        )
+
+    R = D / 2.0
+    r_phys = np.linspace(hub_radius, R, n_sec)
+    r_nd   = r_phys / R  # r/R
+
+    # --- detectar se pitch_raw está em graus ou em radianos ---
+    max_abs = float(np.nanmax(np.abs(pitch_raw)))
+    if max_abs > np.pi * 1.5:           # valores grandes → provavelmente graus
+        twist = np.deg2rad(pitch_raw)
+    else:
+        twist = pitch_raw               # já está em rad
+
+    # mapa de cores por aerofólio
+    foil_colors = {
+        "E63": "m",
+        "NACA0012": "b",
+    }
+
+    def data_for_cylinder_along_z(cx, cy, radius, z_min, z_max=0.0):
+        z = np.linspace(z_min, z_max, 40)
+        theta = np.linspace(0, 2 * np.pi, 40)
+        tgrid, zgrid = np.meshgrid(theta, z)
+        x = radius * np.cos(tgrid) + cx
+        y = radius * np.sin(tgrid) + cy
+        return x, y, zgrid
+
+    # --- figura 3D ---
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+
+    # para cada pá
+    for blade_index in range(B):
+        psi = 2.0 * np.pi * blade_index / B
+
+        # bases locais no disco
+        e_r = np.array([np.cos(psi), np.sin(psi), 0.0])   # radial
+        e_t = np.array([-np.sin(psi), np.cos(psi), 0.0])  # tangencial (corda sem twist)
+        e_n = np.cross(e_r, e_t)                          # normal da pá
+        e_n /= np.linalg.norm(e_n) + 1e-15
+
+        for i in range(n_sec):
+            beta = twist[i]  # twist/aoa geométrico da seção (rad)
+
+            # direção da corda após twist (no plano tangencial–normal)
+            c_dir = np.cos(beta) * e_t + np.sin(beta) * e_n
+
+            # ponto central da seção no raio r/R
+            r0 = r_nd[i] * e_r
+
+            # corda normalizada
+            c_nd = chord_list[i] / R
+
+            # extremos da corda (linha de seção)
+            p1 = r0 - 0.5 * c_nd * c_dir
+            p2 = r0 + 0.5 * c_nd * c_dir
+
+            x = [p1[0], p2[0]]
+            y = [p1[1], p2[1]]
+            z = [p1[2], p2[2]]
+
+            foil_name = foil_list[i]
+            color = foil_colors.get(foil_name, "k")  # default preto
+
+            ax.plot3D(x, y, z, color=color, linewidth=1.2)
+
+    # --- hub ---
+    hub_nd = hub_radius / R
+    Xc, Yc, Zc = data_for_cylinder_along_z(0.0, 0.0, hub_nd, -0.05, 0.0)
+    ax.plot_surface(Xc, Yc, Zc, color="r", antialiased=False, alpha=0.8)
+
+    p = Circle((0, 0), hub_nd, color="r")
+    ax.add_patch(p)
+    art3d.pathpatch_2d_to_3d(p, z=0.0)
+
+    # --- ajustes de visual ---
+    ax.set_title(f"Blade Planform ({title_suffix})", fontsize=12)
+    ax.set_xlim(-1.1, 1.1)
+    ax.set_ylim(-1.1, 1.1)
+    ax.set_zlim(-0.4, 0.4)
+
+    ax.set_xlabel("X/R")
+    ax.set_ylabel("Y/R")
+    ax.set_zlabel("Z/R")
+    ax.grid(True)
+    ax.azim = -50
+    ax.elev = 35
+    ax.set_box_aspect((1, 1, 0.5))
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_propeller_from_row_plotly(row, title_suffix="Propeller"):
+    """
+    Versão interativa em Plotly: plota o hélice em 3D usando segmentos de corda
+    coloridos por aerofólio.
+
+    Campos esperados em `row`:
+      - D: diâmetro do hélice
+      - B: número de pás
+      - hub_radius: raio do hub
+      - number_of_sections: número de seções na pá
+      - foil_list: lista (ou string) com o aerofólio de cada seção
+      - chord_list: lista (ou string) com corda de cada seção (mesmas unidades de D)
+      - pitch_list: lista (ou string) com o *twist* da seção
+        (em graus OU em radianos – detectado automaticamente)
+
+    Retorna um plotly.graph_objects.Figure.
+    """
+
+    # --- parâmetros básicos ---
+    D = float(row["D"])
+    B = int(row["B"])
+    hub_radius = float(row["hub_radius"])
+    n_sec = int(row["number_of_sections"])
+
+    # --- converte campos em listas/arrays ---
+    foil_list  = _parse_list_field(row["foil_list"],  cast_func=str)
+    chord_list = np.asarray(_parse_list_field(row["chord_list"], cast_func=float))
+    pitch_raw  = np.asarray(_parse_list_field(row["pitch_list"],  cast_func=float))
+
+    if len(foil_list) != n_sec or len(chord_list) != n_sec or len(pitch_raw) != n_sec:
+        raise ValueError(
+            "foil_list, chord_list e pitch_list devem ter tamanho igual a number_of_sections"
+        )
+
+    R = D / 2.0
+    r_phys = np.linspace(hub_radius, R, n_sec)
+    r_nd   = r_phys / R  # r/R
+
+    # --- detectar se pitch_raw está em graus ou em radianos ---
+    max_abs = float(np.nanmax(np.abs(pitch_raw)))
+    if max_abs > np.pi * 1.5:      # valores grandes → provavelmente graus
+        twist = np.deg2rad(pitch_raw)
+    else:
+        twist = pitch_raw          # já está em rad
+
+    # mapa de cores por aerofólio
+    foil_colors = {
+        "E63": "olive",
+        "NACA4412": "blue",
+    }
+
+    # figura plotly
+    fig = go.Figure()
+
+    # --- pás ---
+    for blade_index in range(B):
+        psi = 2.0 * np.pi * blade_index / B
+
+        # bases locais no disco
+        e_r = np.array([np.cos(psi), np.sin(psi), 0.0])   # radial
+        e_t = np.array([-np.sin(psi), np.cos(psi), 0.0])  # tangencial (corda sem twist)
+        e_n = np.cross(e_r, e_t)                          # normal da pá
+        e_n /= np.linalg.norm(e_n) + 1e-15
+
+        for i in range(n_sec):
+            beta = twist[i]  # twist/aoa geométrico (rad)
+
+            # direção da corda após twist (no plano tangencial–normal)
+            c_dir = np.cos(beta) * e_t + np.sin(beta) * e_n
+
+            # ponto central da seção no raio r/R
+            r0 = r_nd[i] * e_r
+
+            # corda normalizada
+            c_nd = chord_list[i] / R
+
+            # extremos da corda (linha de seção)
+            p1 = r0 - 0.5 * c_nd * c_dir
+            p2 = r0 + 0.5 * c_nd * c_dir
+
+            foil_name = foil_list[i]
+            color = foil_colors.get(foil_name, "black")
+
+            fig.add_trace(go.Scatter3d(
+                x=[p1[0], p2[0]],
+                y=[p1[1], p2[1]],
+                z=[p1[2], p2[2]],
+                mode="lines",
+                line=dict(color=color, width=4),
+                showlegend=False  # pra não explodir a legenda
+            ))
+
+    # --- hub como “cilindro” simples ---
+    hub_nd = hub_radius / R
+    z_cyl = np.linspace(-0.05, 0.0, 20)
+    theta = np.linspace(0, 2*np.pi, 40)
+    theta_grid, z_grid = np.meshgrid(theta, z_cyl)
+    x_cyl = hub_nd * np.cos(theta_grid)
+    y_cyl = hub_nd * np.sin(theta_grid)
+
+    fig.add_surface(
+        x=x_cyl,
+        y=y_cyl,
+        z=z_grid,
+        showscale=False,
+        colorscale=[[0, "rgba(200,0,0,0.8)"], [1, "rgba(200,0,0,0.8)"]],
+        opacity=0.9,
+    )
+
+    # layout
+    fig.update_layout(
+        title=f"Blade Planform ({title_suffix})",
+        scene=dict(
+            xaxis_title="X/R",
+            yaxis_title="Y/R",
+            zaxis_title="Z/R",
+            xaxis=dict(range=[-1.1, 1.1]),
+            yaxis=dict(range=[-1.1, 1.1]),
+            zaxis=dict(range=[-0.4, 0.4]),
+            aspectmode="manual",
+            aspectratio=dict(x=1, y=1, z=0.5),
+        ),
+    )
+
+    return fig
+
+# --------------------------------------------
+
+# --- Optimization run analysis edits ---
+
+def plot_generational_metrics_interactive(df_evaluations: pd.DataFrame):
+    """
+    Gera um gráfico interativo por geração com:
+      - média e melhor aerial_fitness
+      - média e melhor aquatic_fitness
+      - média e melhor (menor) cavitating_proportion
+      - média e melhor QI
+
+    Retorna um plotly.graph_objects.Figure.
+    """
+
+    required_cols = [
+        "generation",
+        "aerial_fitness",
+        "aquatic_fitness",
+        "cavitating_proportion",
+        "QI",
+    ]
+    for col in required_cols:
+        if col not in df_evaluations.columns:
+            raise ValueError(f"Coluna obrigatória ausente em df_evaluations: '{col}'")
+
+    grouped = (
+        df_evaluations
+        .groupby("generation")
+        .agg(
+            aerial_mean=("aerial_fitness", "mean"),
+            aerial_best=("aerial_fitness", "max"),
+            aquatic_mean=("aquatic_fitness", "mean"),
+            aquatic_best=("aquatic_fitness", "max"),
+            cav_mean=("cavitating_proportion", "mean"),
+            cav_best=("cavitating_proportion", "min"),  # melhor = menor cavitação
+            qi_mean=("QI", "mean"),
+            qi_best=("QI", "max"),
+        )
+        .reset_index()
+        .sort_values("generation")
+    )
+
+    x = grouped["generation"]
+
+    # Definindo cores fixas por métrica
+    colors = {
+        "aerial": "#1f77b4",   # azul
+        "aquatic": "#2ca02c",  # verde
+        "cav": "#d62728",      # vermelho
+        "qi": "#9467bd",       # roxo
+    }
+
+    fig = go.Figure()
+
+    # Aerial fitness
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["aerial_mean"],
+        mode="lines",
+        name="Aerial fitness (média)",
+        line=dict(color=colors["aerial"], dash="solid")
+    ))
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["aerial_best"],
+        mode="lines",
+        name="Aerial fitness (melhor)",
+        line=dict(color=colors["aerial"], dash="dash")
+    ))
+
+    # Aquatic fitness
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["aquatic_mean"],
+        mode="lines",
+        name="Aquatic fitness (média)",
+        line=dict(color=colors["aquatic"], dash="solid")
+    ))
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["aquatic_best"],
+        mode="lines",
+        name="Aquatic fitness (melhor)",
+        line=dict(color=colors["aquatic"], dash="dash")
+    ))
+
+    # Cavitating proportion (melhor = menor)
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["cav_mean"],
+        mode="lines",
+        name="Cavitating proportion (média)",
+        line=dict(color=colors["cav"], dash="solid")
+    ))
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["cav_best"],
+        mode="lines",
+        name="Cavitating proportion (melhor/menor)",
+        line=dict(color=colors["cav"], dash="dash")
+    ))
+
+    # QI
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["qi_mean"],
+        mode="lines",
+        name="QI (média)",
+        line=dict(color=colors["qi"], dash="solid")
+    ))
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["qi_best"],
+        mode="lines",
+        name="QI (melhor)",
+        line=dict(color=colors["qi"], dash="dash")
+    ))
+
+    fig.update_layout(
+        title="Evolução por geração das métricas de fitness e cavitação",
+        xaxis_title="Geração",
+        yaxis_title="Valor da métrica",
+        hovermode="x unified",
+    )
+
+    return fig
+
+def plot_pareto_front(df_pareto: pd.DataFrame,
+                      title="Pareto Front - Aquatic vs Aerial Fitness"):
+    """
+    Plota a frente de Pareto usando Plotly, comparando:
+      - eixo X: aquatic_fitness
+      - eixo Y: aerial_fitness
+
+    Se houver coluna 'generation', usa como cor para facilitar a visualização;
+    caso contrário, plota tudo na mesma cor.
+
+    Retorna um plotly.graph_objects.Figure.
+    """
+
+    required = ["aquatic_fitness", "aerial_fitness"]
+    for col in required:
+        if col not in df_pareto.columns:
+            raise ValueError(f"Coluna obrigatória ausente em df_pareto: '{col}'")
+
+    color_col = "generation" if "generation" in df_pareto.columns else None
+
+    fig = px.scatter(
+        df_pareto,
+        x="aquatic_fitness",
+        y="aerial_fitness",
+        color=color_col,
+        title=title,
+        labels={
+            "aquatic_fitness": "Aquatic fitness",
+            "aerial_fitness": "Aerial fitness",
+            "generation": "Generation",
+        },
+        hover_data={"aquatic_fitness": True,
+                    "aerial_fitness": True}
+    )
+
+    fig.update_layout(
+        xaxis_title="Aquatic fitness",
+        yaxis_title="Aerial fitness",
+        legend_title="Generation" if color_col else None,
+    )
+
+    return fig
