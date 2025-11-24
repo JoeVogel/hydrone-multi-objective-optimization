@@ -35,9 +35,9 @@ def aerial_bemt_evaluations(rotor, list_of_scenarios):
 
         print("Scenario RPM: ", scenario.rpm)
 
-        T, Q, P, J, CT, CQ, CP, eta = air_solver.evaluate(rotor)
+        T, Q, P, J, CT, CQ, CP, eta, FM = air_solver.evaluate(rotor)
 
-        results.append((scenario.rpm, T, Q, P, J, CT, CQ, CP, eta))
+        results.append((scenario.rpm, T, Q, P, J, CT, CQ, CP, eta, FM))
     
     return results
 
@@ -57,7 +57,7 @@ def aquatic_bemt_evaluations(rotor, list_of_scenarios):
         print("Cavitating Proportion", cavitating_proportion)
         print("Quality Index (QI): ", QI)
 
-        results.append((scenario.rpm, T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion))
+        results.append((scenario.rpm, T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion, QI))
     
     return results
 
@@ -338,9 +338,9 @@ if __name__ == "__main__":
         Scenario(rpm=5500.0, v_inf=0.0)
     ]
     
-    # aerial_results = aerial_bemt_evaluations(rotor, list_of_scenarios)
+    aerial_results = aerial_bemt_evaluations(rotor, list_of_scenarios)
 
-    # plot_aerial_results(aerial_results)
+    plot_aerial_results(aerial_results)
 
     # ---------------------------------------------------
 

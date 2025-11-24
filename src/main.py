@@ -27,7 +27,6 @@ def load_config_toml(path: str):
 
 if __name__ == "__main__":
 
-
     # Load configurations
     config_base_dir = Path(__file__).resolve().parent.parent
     config_path = config_base_dir / "data" / "configuration.toml"
@@ -38,9 +37,9 @@ if __name__ == "__main__":
         scenario=Scenario(rpm=4000.0, v_inf=0.0)
     )
 
-    # 3700 RPM mantains tip speed below 39 m/s for 20 cm diameter propeller
+    # Tip: mantain tip speed below 39 m/s (2100 rpm for 0.36 m diameter rotor)
     aquatic_evaluator = WaterBEMT(
-        scenario=Scenario(rpm=400.0, v_inf=0.0)
+        scenario=Scenario(rpm=200.0, v_inf=0.0)
     )
     
     optimizer = NSGAII(configs, aerial_evaluator, aquatic_evaluator)

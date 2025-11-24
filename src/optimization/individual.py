@@ -12,6 +12,7 @@ class Individual():
         self.number_of_sections     = number_of_sections
         self.aerial_fitness         = None
         self.aquatic_fitness        = None
+        self.cavitating_proportion  = None
         self.rank                   = None
         self.crowding_distance      = None
         self.dominated_solutions    = []

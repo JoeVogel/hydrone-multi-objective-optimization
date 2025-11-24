@@ -2,11 +2,11 @@
 name = "hybrid_propeller"
 diameter = 0.3556
 hub_radius = 0.01
-number_of_sections = 30
+number_of_sections = 20
 
 [nsga2]
-pop_size = 20
-generations = 10
+pop_size = 100
+generations = 100
 mutation_rate = 0.1
 seed = 42
 
@@ -25,4 +25,4 @@ max = 30.0
 [[variables]]
 name = "airfoil_list"
 type = "categorical"
-choices = ["NACA0018", "E63", "NACA4412"]
+choices = ["E63", "NACA4412"]

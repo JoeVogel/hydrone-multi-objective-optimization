@@ -68,7 +68,7 @@ class Solver:
         CP = 2*pi*CQ
 
         if J==0.0:
-            eta = (CT/CP)
+            eta = 0.0
         else:
             eta = (CT/CP)*J
 

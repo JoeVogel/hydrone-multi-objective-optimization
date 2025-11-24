@@ -144,6 +144,10 @@ class WaterBEMT(EvaluationMethod):
             QI = (1 / (π√(2π))) * (K_T^(3/2) / K_Q)
             1.5 is equivalente to raising to the power of 3/2.
         """
+
+        if KQ <= 0:
+            return 0.0
+
         return (1 / (pi * sqrt(2 * pi))) * ((KT ** 1.5) / KQ)
 
     def evaluate(self, rotor):
@@ -158,13 +162,12 @@ class WaterBEMT(EvaluationMethod):
 
         cavitating_proportion = 0.0
 
-        # TODO: depurar para ver se está tudo ok
         sec_df = self._compute_cavitation_sections(sections_df=sec_df, depth=0.5)
 
         num_cavitating_sections = int(sec_df['cavitation_risk'].fillna(False).sum())
         cavitating_proportion = num_cavitating_sections / len(sec_df)
 
-        if J == 0:
+        if self.scenario.v_inf == 0:
             QI = self.compute_quality_index_bollard(KT=CT, KQ=CQ)
 
         return T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion, QI

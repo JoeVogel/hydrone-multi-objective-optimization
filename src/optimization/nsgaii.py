@@ -2,6 +2,8 @@ import os
 import random
 import logging
 import csv
+import math
+import copy
 
 import pandas as pd
 
@@ -31,11 +33,13 @@ class NSGAII:
         self.diameter                   = configs["problem"]["diameter"]
         self.number_of_sections         = configs["problem"]["number_of_sections"]
         self.hub_radius                 = configs["problem"]["hub_radius"]
+        self.max_chord_global           = configs["problem"]["max_chord_global"] if "max_chord_global" in configs["problem"] else None
 
         self.population_size            = configs["nsga2"]["pop_size"]
         self.maximum_generations        = configs["nsga2"]["generations"]
         self.seed                       = configs["nsga2"]["seed"]
-        self.mutation_rate              = configs["nsga2"]["mutation_rate"]
+        self.elite_fraction             = configs["nsga2"]["elite_fraction"] if "elite_fraction" in configs["nsga2"] else 0.5
+        self.mutation_rate              = configs["nsga2"]["mutation_rate"] if "mutation_rate" in configs["nsga2"] else 0.1
         
         self.decision_variables         = configs["variables"]
 
@@ -50,7 +54,7 @@ class NSGAII:
         self.max_alpha          = alpha["max"]
         self.min_blade_number   = blades["min"]
         self.max_blade_number   = blades["max"]
-        self.foil_options          = foil_list["choices"]
+        self.foil_options       = foil_list["choices"]
 
         self.hub_diameter = self.hub_radius * 2 
 
@@ -157,39 +161,36 @@ class NSGAII:
         with self.front_csv_path.open("w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=self._eval_fields)
             writer.writeheader()
+        
+        for i, ind in enumerate(front):
+            # Reconstrói o rotor a partir do indivíduo
+            rotor = Rotor(
+                n_blades=ind.B,
+                diameter=ind.D,
+                hub_radius=ind.hub_radius,
+                number_of_sections=ind.number_of_sections,
+                foil_list=ind.foil_list,
+                chord_list=ind.chord_list,
+                pitch_list=ind.pitch_list
+            )
 
-            for i, ind in enumerate(front):
-                # Reconstrói o rotor a partir do indivíduo
-                rotor = Rotor(
-                    n_blades=ind.B,
-                    diameter=ind.D,
-                    hub_radius=ind.hub_radius,
-                    number_of_sections=getattr(ind, "number_of_sections", self.number_of_sections),
-                    foil_list=getattr(ind, "foil_list", None),
-                    chord_list=getattr(ind, "chord_list", None),
-                    pitch_list=getattr(ind, "pitch_list", None),
-                )
+            a = w = None
 
-                a = w = None
-                try:
-                    aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta = self.aerial_evaluation_method.evaluate(rotor)
-                    a = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta}
-                except Exception as e:
-                    logger.debug(f"[Front CSV] Aerial eval failed: {e}")
-                try:
-                    wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
-                    w = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI}
-                except Exception as e:
-                    logger.debug(f"[Front CSV] Aquatic eval failed: {e}")
+            aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
+            a = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM}
 
-                self._append_eval_row(
-                    generation=self.maximum_generations,  # último gen
-                    pop_index=i,
-                    individual=ind,
-                    aerial=a,
-                    aquatic=w,
-                    target_path=self.front_csv_path
-                )
+            wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
+            w = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI}
+
+
+            self._append_eval_row(
+                generation="",  # último gen
+                pop_index="",
+                individual=ind,
+                aerial=a,
+                aquatic=w,
+                target_path=self.front_csv_path
+            )
 
     def _generate_uniform_foil_list(self) -> list[str]:
         """
@@ -204,6 +205,18 @@ class NSGAII:
 
         return [foil_choice] * self.number_of_sections
     
+    def _generate_diverse_foil_list(self):
+        n = self.number_of_sections
+        foils = []
+        block_size = random.randint(3, 8)  # foils em blocos
+        
+        for i in range(n):
+            if i % block_size == 0:
+                current_foil = random.choice(self.foil_options)
+            foils.append(current_foil)
+
+        return foils
+
     def _generate_uniform_pitch_list(self) -> list[float]:
         """
         Generates a uniform pitch list for all blade sections based on the min max alpha.
@@ -214,31 +227,162 @@ class NSGAII:
 
         return [pitch_value] * self.number_of_sections
 
+    def _generate_diverse_pitch_list(self):
+        n = self.number_of_sections
+
+        # Base profile: linear twist or exponential variation
+        root_pitch = random.uniform(self.min_alpha, self.max_alpha)
+        tip_pitch  = random.uniform(self.min_alpha, root_pitch)  # sempre decrescente
+        
+        pitch = [
+            root_pitch + (tip_pitch - root_pitch) * (i / (n - 1))
+            for i in range(n)
+        ]
+
+        # Add small random noise (±10%)
+        for i in range(n):
+            noise = random.uniform(-0.1, 0.1) * pitch[i]
+            pitch[i] = max(self.min_alpha, min(self.max_alpha, pitch[i] + noise))
+
+        return pitch
+
+    def _generate_diverse_chord_list(self):
+        n = self.number_of_sections
+        min_chord = 0.015 * self.diameter
+
+        # root chord can be up to hub diameter
+        root_chord = random.uniform(0.5 * self.hub_diameter, self.hub_diameter)
+
+        # tip chord is a fraction of root
+        tip_chord = random.uniform(0.2 * root_chord, 0.6 * root_chord)
+
+        chord = [
+            root_chord + (tip_chord - root_chord) * (i / (n - 1))
+            for i in range(n)
+        ]
+
+        # add noise (±15%)
+        for i in range(n):
+            factor = 1.0 + random.uniform(-0.15, 0.15)
+            chord[i] = max(min_chord, chord[i] * factor)
+
+        return chord
+
     def _initialize_population(self):
         """
-        Initializes a random population of individuals.
+        Creates a highly diverse initial population using multiple
+        blade profile archetypes.
+        Each archetype generates chord/pitch/foil with different
+        radial patterns to avoid all individuals falling in the same front.
         """
+
         population = []
-        
         random.seed(self.seed)
-        
+        n = self.number_of_sections
+        min_chord = 0.015 * self.diameter
+
+        # -------- Archetype generators -------- #
+
+        def profile_linear():
+            """Linear chord + linear pitch + foil in blocks"""
+            # chord
+            root = random.uniform(0.6*self.hub_diameter, self.hub_diameter)
+            tip  = random.uniform(0.15*root, 0.6*root)
+            chord = [root + (tip - root)*(i/(n-1)) for i in range(n)]
+
+            # pitch
+            root_pitch = random.uniform(self.min_alpha, self.max_alpha)
+            tip_pitch  = random.uniform(self.min_alpha, root_pitch)
+            pitch = [root_pitch + (tip_pitch-root_pitch)*(i/(n-1)) for i in range(n)]
+
+            # foils in blocks
+            foil = []
+            block = random.randint(3,8)
+            for i in range(n):
+                if i % block == 0:
+                    f = random.choice(self.foil_options)
+                foil.append(f)
+
+            return chord, pitch, foil
+
+        def profile_exponential():
+            """Exponential chord decay + random local twist"""
+            r = [i/(n-1) for i in range(n)]
+
+            root = random.uniform(0.7*self.hub_diameter, self.hub_diameter)
+            chord = [max(min_chord, root * (0.25 + 0.75 * (1 - ri)**2)) for ri in r]
+
+            base = random.uniform(self.min_alpha, self.max_alpha)
+            pitch = [max(self.min_alpha,
+                        min(self.max_alpha, base + random.uniform(-3,3)*ri))
+                    for ri in r]
+
+            foil = [random.choice(self.foil_options) for _ in range(n)]
+            return chord, pitch, foil
+
+        def profile_s_curve():
+            """S-curve chord + smooth twist pitch"""
+            r = [i/(n-1) for i in range(n)]
+
+            root = random.uniform(0.5*self.hub_diameter, self.hub_diameter)
+            tip  = random.uniform(0.15, 0.25) * root
+            chord = [root + (tip-root)*(3*r*r - 2*r*r*r) for r in r]
+            chord = [max(min_chord, c) for c in chord]
+
+            root_pitch = random.uniform(self.min_alpha, self.max_alpha)
+            tip_pitch = random.uniform(self.min_alpha, root_pitch)
+            pitch = [root_pitch + (tip_pitch-root_pitch)*(3*r*r - 2*r*r*r) for r in r]
+
+            foil = []
+            last = random.choice(self.foil_options)
+            for i in range(n):
+                if random.random() < 0.2:
+                    last = random.choice(self.foil_options)
+                foil.append(last)
+
+            return chord, pitch, foil
+
+        def profile_random_chaos():
+            """High randomness but later smoothed — exploration archetype"""
+            chord = [max(min_chord,
+                        random.uniform(0.3*self.hub_diameter, self.hub_diameter))
+                    for _ in range(n)]
+
+            pitch = [random.uniform(self.min_alpha, self.max_alpha)
+                    for _ in range(n)]
+
+            foil = [random.choice(self.foil_options) for _ in range(n)]
+            return chord, pitch, foil
+
+        archetypes = [
+            profile_linear,
+            profile_exponential,
+            profile_s_curve,
+            profile_random_chaos,
+        ]
+
+        # -------- Generate individuals -------- #
+
         for _ in range(self.population_size):
 
-            chord_list = [self.hub_diameter] * self.number_of_sections  # default chord list
-            foil_list  = self._generate_uniform_foil_list()
-            pitch_list = self._generate_uniform_pitch_list()
+            generator = random.choice(archetypes)
+            chord, pitch, foil = generator()
+
+            # Apply smoothing constraints
+            pitch, chord = self._adjust_phisical_constraints(pitch, chord)
 
             individual = Individual(
                 D=self.diameter,
                 B=random.randint(self.min_blade_number, self.max_blade_number),
-                pitch_list=pitch_list,
-                chord_list=chord_list,  
-                foil_list=foil_list,
-                hub_radius=self.hub_radius,  
-                number_of_sections=self.number_of_sections  
+                pitch_list=pitch,
+                chord_list=chord,
+                foil_list=foil,
+                hub_radius=self.hub_radius,
+                number_of_sections=self.number_of_sections
             )
 
             population.append(individual)
+
         return population
 
     def _fast_non_dominated_sort(self, population):
@@ -335,27 +479,29 @@ class NSGAII:
     def _create_next_generation(self, population, fronts):
         """
         Creates the next generation using tournament selection, crossover, and mutation.
+        Only a fraction of the population is filled by elitism (copying from fronts), and the rest is filled by offspring.
         """
         next_generation = []
         i = 0
 
-        # Adicionar as frentes até que a população atinja o tamanho necessário
-        while i < len(fronts) and len(next_generation) + len(fronts[i]) <= self.population_size:
-            next_generation.extend(fronts[i])  # Adiciona a frente inteira
+        elite_max = max(1, int(self.population_size * self.elite_fraction))
+
+        # 1) Add entire fronts until we reach the elite limit
+        while i < len(fronts) and len(next_generation) + len(fronts[i]) <= elite_max:
+            next_generation.extend(fronts[i])
             i += 1
 
-        # Se ainda falta espaço, ordenamos por crowding distance e completamos
-        remaining_spots = self.population_size - len(next_generation)
-        if remaining_spots > 0:
+        # 2) If next front would exceed elite limit, fill remaining elite spots based on crowding distance
+        remaining_elite_spots = elite_max - len(next_generation)
+        if remaining_elite_spots > 0 and i < len(fronts):
             fronts[i].sort(key=lambda x: -x.crowding_distance)  # Ordem decrescente de crowding distance
-            next_generation.extend(fronts[i][:remaining_spots])  # Preenche com os melhores
+            next_generation.extend(fronts[i][:remaining_elite_spots])  # Preenche com os melhores
 
-        # Aplicar torneio + crossover + mutação para gerar filhos até preencher a população
+        # 3) Complete the rest of the population with offspring (crossover + mutation)
         while len(next_generation) < self.population_size:
             parent1 = self._tournament_selection(population)
             parent2 = self._tournament_selection(population)
 
-            # Crossover e mutação
             child = self._crossover(parent1, parent2)
             self._mutate(child)
 
@@ -376,35 +522,199 @@ class NSGAII:
         # Return the best individual from the tournament
         return tournament[0]
 
+    def _smooth_profile(self, values, max_delta):
+        """
+        Limits the jump between neighboring sections to |values[i] - values[i-1]| <= max_delta.
+        Applies a progressive "clamping".
+        """
+        if not values:
+            return values
+
+        smoothed = list(values)
+        for i in range(1, len(smoothed)):
+            delta = smoothed[i] - smoothed[i - 1]
+            if abs(delta) > max_delta:
+                smoothed[i] = smoothed[i - 1] + max_delta * math.copysign(1, delta)
+        return smoothed
+
+    def _enforce_chord_constraints(self, chord_list):
+        """
+        First section chord cannot be larger than hub diameter.
+        """
+        if not chord_list:
+            return chord_list
+
+        chord_list = list(chord_list)
+        if chord_list[0] > self.hub_diameter * 0.5:
+            chord_list[0] = self.hub_diameter * 0.5
+        return chord_list
+
+    def _adjust_phisical_constraints(self, pitch_list, chord_list):
+        """
+        Adjusts pitch and chord lists to respect physical constraints.
+        """
+        # TODO: testar e setar valores adequados
+        max_delta_pitch = (self.max_alpha - self.min_alpha) * 0.2  # Exemple: 20% of range
+        max_delta_chord = 0.01 # Exemple: 1 cm
+
+        # Respect hub diameter constraint
+        chord_list = self._enforce_chord_constraints(chord_list)
+
+        pitch_list = self._smooth_profile(pitch_list, max_delta_pitch)
+        chord_list = self._smooth_profile(chord_list, max_delta_chord)
+
+        # Second pass to ensure constraints
+        chord_list = self._enforce_chord_constraints(chord_list)
+
+        return pitch_list, chord_list
+
     def _crossover(self, parent1, parent2):
         """
         Performs crossover between two parents to produce a child.
         """
 
+        n = self.number_of_sections
+        cut = random.randint(1, n - 1)
+
+        child_pitch = list(parent1.pitch_list[:cut]) + list(parent2.pitch_list[cut:])
+        child_chord = list(parent1.chord_list[:cut]) + list(parent2.chord_list[cut:])
+
+        child_foil  = list(parent1.foil_list[:cut])  + list(parent2.foil_list[cut:])
+
+        # --- Cut region pitch and chord smoothing ---
+        # Pitch and chord in sections cut-1 and cut can be interpolated
+        if 1 <= cut < n:
+            # Pitch
+            p_left  = parent1.pitch_list[cut - 1]
+            p_right = parent2.pitch_list[cut]
+            interp_pitch = 0.5 * (p_left + p_right)
+            child_pitch[cut - 1] = interp_pitch
+            child_pitch[cut]     = interp_pitch
+
+            # Chord
+            c_left  = parent1.chord_list[cut - 1]
+            c_right = parent2.chord_list[cut]
+            interp_chord = 0.5 * (c_left + c_right)
+            child_chord[cut - 1] = interp_chord
+            child_chord[cut]     = interp_chord
+
+        # --- Post-smoothing to avoid jagged profiles ---
+        child_pitch, child_chord = self._adjust_phisical_constraints(child_pitch, child_chord)
+
+        child_B = random.choice([parent1.B, parent2.B])
+
+        # Create child individual
         child = Individual(
-            alpha=(parent1.alpha + parent2.alpha) / 2,
             D=self.diameter,
-            B=int((parent1.B + parent2.B) / 2),
-            chord_list=self.chord_list, # Assuming chord_list is the same for every individual
-            foil=self.foil, # Assuming chord_list is the same for every individual
-            hub_radius=self.hub_radius, # Assuming chord_list is the same for every individual
-            number_of_sections=self.number_of_sections # Assuming chord_list is the same for every individual
+            B=child_B,
+            pitch_list=child_pitch,
+            chord_list=child_chord,
+            foil_list=child_foil,
+            hub_radius=self.hub_radius,
+            number_of_sections=self.number_of_sections
         )
 
         return child
 
-    def _mutate(self, individual, mutation_rate=0.1):
+    def _choose_block_indices(self, n: int, block_fraction: float):
+        """
+        Chooses a contiguous block of indices based on selected fraction.
+        """
+        if n <= 0:
+            return []
+
+        block_size = max(1, int(round(block_fraction * n)))
+        block_size = min(block_size, n)
+
+        start = random.randint(0, n - block_size)
+        return list(range(start, start + block_size))
+
+    def _mutate(self, individual):
         """
         Perform mutation on an individual's parameters.
         """
-        # Aplicação da mutação com restrição de valores dentro dos limites
-        if random.random() < mutation_rate:
-            individual.alpha += random.uniform(-0.1, 0.1)
-            individual.alpha = max(self.min_alpha, min(individual.alpha, self.max_alpha))  # Garante que alpha esteja dentro dos limites
 
-        if random.random() < mutation_rate:
-            individual.B += random.randint(-1, 1)  # Como B é inteiro, usar randint é melhor
-            individual.B = max(self.min_blade_number, min(individual.B, self.max_blade_number))  # Garante que B esteja dentro dos limites
+        n = self.number_of_sections
+
+        pitch_list = list(individual.pitch_list)
+        chord_list = list(individual.chord_list)
+        foil_list  = list(individual.foil_list)
+
+        n_mutations = max(1, int(self.mutation_rate * n)) # at least one mutation
+        n_mutations = min(n_mutations, n) # cannot exceed number of sections
+
+        # Mutate number of blades
+        if random.random() < self.mutation_rate:
+            # Mutate number of blades
+            individual.B = random.randint(self.min_blade_number, self.max_blade_number)
+
+        # Mutate pitch
+        sigma_pitch = 1.0  # Standard deviation for pitch mutation (in degrees)
+
+        pitch_block_idx = self._choose_block_indices(n, self.mutation_rate)
+
+        # A single delta for the entire block
+        delta_pitch = random.gauss(0.0, sigma_pitch)
+
+        for i in pitch_block_idx:
+                new_pitch = pitch_list[i] + delta_pitch
+                new_pitch = max(self.min_alpha, min(self.max_alpha, new_pitch))
+                pitch_list[i] = new_pitch
+                 
+        # Mutate chord
+        chord_block_idx = self._choose_block_indices(n, self.mutation_rate)
+
+        # A single scaling factor for the entire block
+        factor_chord = 1.0 + random.uniform(-0.1, 0.1)  # ±10%
+
+        # Minimum chord to avoid non-physical values
+        min_chord = 0.015 * self.diameter # 1.5% of diameter
+
+        for i in chord_block_idx:
+                new_chord = chord_list[i] * factor_chord
+
+                if new_chord < min_chord:
+                    new_chord = min_chord
+
+                if self.max_chord_global is not None:
+                    new_chord = min(new_chord, self.max_chord_global)
+
+                chord_list[i] = new_chord
+
+        # Mutate foil
+        foil_block_idx = self._choose_block_indices(n, self.mutation_rate)
+
+        new_foil = random.choice(self.foil_options)
+
+        for i in foil_block_idx:
+            foil_list[i] = new_foil
+
+        # Adjust to respect physical constraints
+        pitch_list, chord_list = self._adjust_phisical_constraints(pitch_list, chord_list)
+
+        # Update individual
+        individual.pitch_list = pitch_list
+        individual.chord_list = chord_list
+        individual.foil_list  = foil_list
+
+        individual.aerial_fitness  = None
+        individual.aquatic_fitness = None
+        individual.cavitating_proportion = None
+
+    def _cavitation_penalty(self, cav):
+        """
+        Calculates a penalty based on the cavitating proportion.
+        """
+        if cav > 0.50:
+            return 1.0  # Full penalty
+        elif cav > 0.20:
+            return 0.7  # Severe penalty
+        elif cav > 0.10:
+            return 0.4  # Heavy penalty
+        elif cav > 0.05:
+            return 0.2  # Moderate penalty
+        else:
+            return 0.0  # No penalty
 
     def run(self):
         """
@@ -437,26 +747,31 @@ class NSGAII:
                         individual.aerial_fitness = FM  # Usar Figure of Merit como fitness em condição de hover
                     else:
                         individual.aerial_fitness = aEta  # Usar eficiência normal em outras condições
-                        
+
                     aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM}
                 except Exception as e:
-                    logger.debug(f"[NSGA] Aerial eval failed for individual: {e}")
+                    logger.warning(f"[NSGA] Aerial eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
                     individual.aerial_fitness = 0.0  # penalização
+                    aerial = None
                 
                 try:
                     wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
-
-                    # TODO: definir aplicação de penalidade por cavitação
                     
+                    individual.cavitating_proportion = cavitating_proportion
+
                     if (wJ == 0):
-                        individual.aquatic_fitness = QI  # Usar Quality Index como fitness em condição de amarra
+                        fitness_raw = QI  # Usar Quality Index como fitness em condição de amarra
                     else:
-                        individual.aquatic_fitness = wEta  # Usar eficiência normal em outras condições
+                        fitness_raw = wEta  # Usar eficiência normal em outras condições
+
+                    cavitation_penalty = self._cavitation_penalty(cavitating_proportion)
+                    individual.aquatic_fitness = fitness_raw * (1.0 - cavitation_penalty)
 
                     aquatic = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI}
                 except Exception as e:
-                    logger.debug(f"[NSGA] Aquatic eval failed for individual: {e}")
-                    individual.aquatic_fitness = 0.0  # penalização
+                    logger.warning(f"[NSGA] Aquatic eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
+                    individual.aquatic_fitness = -1e6  # penalização
+                    aquatic = None
                 
                 self._append_eval_row(
                     generation=generation,
