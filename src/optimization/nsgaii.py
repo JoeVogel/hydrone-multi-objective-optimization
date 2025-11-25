@@ -26,45 +26,32 @@ https://ieeexplore.ieee.org/abstract/document/996017?casa_token=dDGNqrFAX2YAAAAA
 # https://github.com/smkalami/nsga2-in-python/blob/main/nsga2.py
 
 class NSGAII:
-    def __init__(self, configs, aerial_evaluation_method: EvaluationMethod, aquatic_evaluation_method: EvaluationMethod):
+    def __init__(self, aerial_evaluation_method: EvaluationMethod, aquatic_evaluation_method: EvaluationMethod, problem_configuration, nsga_configuration):
         
         # TODO: adicionar checks nas configurações
         
-        self.diameter                   = configs["problem"]["diameter"]
-        self.number_of_sections         = configs["problem"]["number_of_sections"]
-        self.hub_radius                 = configs["problem"]["hub_radius"]
-        self.max_chord_global           = configs["problem"]["max_chord_global"] if "max_chord_global" in configs["problem"] else None
-
-        self.population_size            = configs["nsga2"]["pop_size"]
-        self.maximum_generations        = configs["nsga2"]["generations"]
-        self.seed                       = configs["nsga2"]["seed"]
-        self.elite_fraction             = configs["nsga2"]["elite_fraction"] if "elite_fraction" in configs["nsga2"] else 0.5
-        self.mutation_rate              = configs["nsga2"]["mutation_rate"] if "mutation_rate" in configs["nsga2"] else 0.1
-        
-        self.decision_variables         = configs["variables"]
-
         self.aerial_evaluation_method   = aerial_evaluation_method
         self.aquatic_evaluation_method  = aquatic_evaluation_method
+        
+        self.diameter           = problem_configuration["diameter"]
+        self.number_of_sections = problem_configuration["number_of_sections"]
+        self.hub_radius         = problem_configuration["hub_radius"]
+        self.max_chord_global   = problem_configuration["max_chord_global"]
+        self.min_alpha          = problem_configuration["min_alpha"] 
+        self.max_alpha          = problem_configuration["max_alpha"]
+        self.min_blade_number   = problem_configuration["min_blade_number"]
+        self.max_blade_number   = problem_configuration["max_blade_number"]
+        self.foil_options       = problem_configuration["foil_options"]
 
-        alpha       = self.get_var("alpha")
-        blades      = self.get_var("n_blades")
-        foil_list   = self.get_var("airfoil_list")
-
-        self.min_alpha          = alpha["min"] 
-        self.max_alpha          = alpha["max"]
-        self.min_blade_number   = blades["min"]
-        self.max_blade_number   = blades["max"]
-        self.foil_options       = foil_list["choices"]
+        self.population_size        = nsga_configuration["population_size"]
+        self.maximum_generations    = nsga_configuration["maximum_generations"]
+        self.seed                   = nsga_configuration["seed"]
+        self.elitism_fraction       = nsga_configuration["elitism_fraction"]
+        self.mutation_rate          = nsga_configuration["mutation_rate"]
 
         self.hub_diameter = self.hub_radius * 2 
 
         self._init_run_outputs()
-
-    def get_var(self, name):
-        for v in self.decision_variables:
-            if v["name"] == name:
-                return v
-        raise KeyError(f"Variable '{name}' not found in configuration")
 
     def _init_run_outputs(self):
         """Creates data/results/<datetime> and initializes evaluations.csv with header."""
@@ -408,7 +395,7 @@ class NSGAII:
         next_generation = []
         i = 0
 
-        elite_max = max(1, int(self.population_size * self.elite_fraction))
+        elite_max = max(1, int(self.population_size * self.elitism_fraction))
 
         # 1) Add entire fronts until we reach the elite limit
         while i < len(fronts) and len(next_generation) + len(fronts[i]) <= elite_max:
