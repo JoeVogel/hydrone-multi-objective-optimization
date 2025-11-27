@@ -8,6 +8,7 @@ number_of_sections = 20
 pop_size = 100
 generations = 100
 mutation_rate = 0.1
+elite_fraction = 0.5
 seed = 42
 
 [[variables]]

@@ -1,10 +1,11 @@
 import logging
 import tomllib
-import os
+import json
+import argparse
 
 # Configurar o log para imprimir no console
 logging.basicConfig(
-    level=logging.INFO,  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    level=logging.CRITICAL,  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",  # Formato da saída
 )
 
@@ -31,60 +32,12 @@ def get_var(variables_list, name):
             return v
     raise KeyError(f"Variable '{name}' not found in configuration")
 
-if __name__ == "__main__":
-
-    # Load configurations
-    config_base_dir = Path(__file__).resolve().parent.parent
-    config_path = config_base_dir / "data" / "configuration.toml"
-    configs = load_config_toml(config_path)
-    
-    variables = configs["variables"]
-    
-    alpha       = get_var(variables, "alpha")
-    blades      = get_var(variables, "n_blades")
-    foil_list   = get_var(variables, "airfoil_list")
-    
-    problem_config = {
-        "diameter"              : configs["problem"]["diameter"],
-        "number_of_sections"    : configs["problem"]["number_of_sections"],
-        "hub_radius"            : configs["problem"]["hub_radius"],
-        "max_chord_global"      : configs["problem"]["max_chord_global"] if "max_chord_global" in configs["problem"] else None,
-        "min_alpha"             : alpha["min"], 
-        "max_alpha"             : alpha["max"],
-        "min_blade_number"      : blades["min"],
-        "max_blade_number"      : blades["max"],
-        "foil_options"          : foil_list["choices"],
-    }
-    
-    nsga_config = {
-        "population_size"     : configs["nsga2"]["pop_size"],
-        "maximum_generations" : configs["nsga2"]["generations"],
-        "seed"                : configs["nsga2"]["seed"],
-        "elitism_fraction"    : configs["nsga2"]["elite_fraction"] if "elite_fraction" in configs["nsga2"] else 0.5,
-        "mutation_rate"       : configs["nsga2"]["mutation_rate"] if "mutation_rate" in configs["nsga2"] else 0.1
-    }
-    
-    # Initialize evaluation methods
-    aerial_evaluator = AerialBEMT(
-        scenario=Scenario(rpm=4000.0, v_inf=0.0)
-    )
-
-    # Tip: mantain tip speed below 39 m/s (2100 rpm for 0.36 m diameter rotor)
-    aquatic_evaluator = WaterBEMT(
-        scenario=Scenario(rpm=200.0, v_inf=0.0)
-    )
-    
-    optimizer = NSGAII(aerial_evaluator, aquatic_evaluator, problem_config, nsga_config)
-    
-    pareto_fronts = optimizer.run()
-
+def plot_fronts(pareto_fronts, show_all_fronts=False):
     # Plot Pareto fronts
     plt.figure(figsize=(9, 6))
 
     cmap = cm.get_cmap("tab10")  # paleta com bom contraste
     markers = ["o", "s", "D", "^", "v", "P", "X", "*"]  # alterna marcadores
-
-    show_all_fronts = False
 
     if show_all_fronts:
         for i, front in enumerate(pareto_fronts):
@@ -122,3 +75,88 @@ if __name__ == "__main__":
     plt.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
     plt.tight_layout()
     plt.show()
+
+if __name__ == "__main__":
+    
+    # ---------- CLI arguments ----------
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--elitism_fraction", type=float, default=None)
+    parser.add_argument("--mutation_rate", type=float, default=None)
+    parser.add_argument("--pop_size", type=int, default=None)
+    parser.add_argument("--generations", type=int, default=None)
+    args = parser.parse_args()
+
+    # Load configurations
+    config_base_dir = Path(__file__).resolve().parent.parent
+    config_path = config_base_dir / "data" / "configuration.toml"
+    configs = load_config_toml(config_path)
+    
+    variables = configs["variables"]
+    
+    alpha       = get_var(variables, "alpha")
+    blades      = get_var(variables, "n_blades")
+    foil_list   = get_var(variables, "airfoil_list")
+    
+    problem_config = {
+        "diameter"              : configs["problem"]["diameter"],
+        "number_of_sections"    : configs["problem"]["number_of_sections"],
+        "hub_radius"            : configs["problem"]["hub_radius"],
+        "max_chord_global"      : configs["problem"]["max_chord_global"] if "max_chord_global" in configs["problem"] else None,
+        "min_alpha"             : alpha["min"], 
+        "max_alpha"             : alpha["max"],
+        "min_blade_number"      : blades["min"],
+        "max_blade_number"      : blades["max"],
+        "foil_options"          : foil_list["choices"],
+    }
+    
+    nsga_elite      = configs["nsga2"].get("elite_fraction", 0.5)
+    nsga_mutrate    = configs["nsga2"].get("mutation_rate", 0.1)
+    nsga_popsize    = configs["nsga2"].get("pop_size", 60)
+    nsga_gener      = configs["nsga2"].get("generations", 60)
+    
+    # Overrides pelo irace
+    if args.elitism_fraction is not None:
+        nsga_elite = args.elitism_fraction
+    if args.mutation_rate is not None:
+        nsga_mutrate = args.mutation_rate
+    if args.pop_size is not None:
+        nsga_popsize = args.pop_size
+    if args.generations is not None:
+        nsga_gener = args.generations
+    
+    nsga_config = {
+        "population_size": nsga_popsize,
+        "maximum_generations": nsga_gener,
+        "seed": configs["nsga2"].get("seed",42),
+        "elitism_fraction": nsga_elite,
+        "mutation_rate": nsga_mutrate,
+    }
+        
+    # Initialize evaluation methods
+    aerial_evaluator = AerialBEMT(
+        scenario=Scenario(rpm=4000.0, v_inf=0.0)
+    )
+
+    # Tip: mantain tip speed below 39 m/s (2100 rpm for 0.36 m diameter rotor)
+    aquatic_evaluator = WaterBEMT(
+        scenario=Scenario(rpm=200.0, v_inf=0.0)
+    )
+    
+    optimizer = NSGAII(aerial_evaluator, aquatic_evaluator, problem_config, nsga_config)
+    
+    pareto_fronts = optimizer.run()
+
+    # plot_fronts(pareto_fronts)
+    
+    # O NSGA-II retorna uma lista de frentes.
+    # A primeira frente é pareto_fronts[0].
+    front = pareto_fronts[0]
+
+    # Criar lista de pares [aerial_fitness, aquatic_fitness]
+    pareto = [
+        [float(ind.aerial_fitness), float(ind.aquatic_fitness)]
+        for ind in front
+    ]
+
+    # Importante: NÃO imprimir nada além disso quando rodando no Irace
+    print(json.dumps(pareto))
