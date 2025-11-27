@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
-from pathlib import Path
 import plotly.graph_objects as go
 import plotly.express as px
 import matplotlib.pyplot as plt
+import seaborn as sns
+
+from pathlib import Path
 from mpl_toolkits.mplot3d import art3d
 from matplotlib.patches import Circle
 
@@ -465,3 +467,112 @@ def plot_pareto_front(df_pareto: pd.DataFrame,
     )
 
     return fig
+
+# --------------------------------------------
+
+# --- Multiple run analysis edits ---
+
+def plot_aerial_boxplot(df_runs: pd.DataFrame):
+    """
+    Plots a boxplot of the aerial_fitness across multiple runs.
+    Expects df_runs to have columns: 'run_id', 'aerial_fitness'.
+    """
+
+    if "run_id" not in df_runs.columns or "aerial_fitness" not in df_runs.columns:
+        raise ValueError("DataFrame must contain 'run_id' and 'aerial_fitness' columns.")
+
+    fig = px.box(
+        df_runs,
+        y="aerial_fitness",
+        points="all",
+        title="Aerial Fitness across Multiple Runs",
+        labels={"aerial_fitness": "Aerial Fitness"}
+    )
+
+    fig.update_layout(
+        yaxis_title="Aerial Fitness",
+    )
+
+    return fig
+
+def plot_aquatic_boxplot(df_runs: pd.DataFrame):
+    """
+    Plots a boxplot of the aquatic_fitness across multiple runs.
+    Expects df_runs to have columns: 'run_id', 'aquatic_fitness'.
+    """
+
+    if "run_id" not in df_runs.columns or "aquatic_fitness" not in df_runs.columns:
+        raise ValueError("DataFrame must contain 'run_id' and 'aquatic_fitness' columns.")
+
+    fig = px.box(
+        df_runs,
+        y="aquatic_fitness",
+        points="all",
+        title="Aquatic Fitness across Multiple Runs",
+        labels={"aquatic_fitness": "Aquatic Fitness"}
+    )
+
+    fig.update_layout(
+        yaxis_title="Aquatic Fitness",
+    )
+
+    return fig
+
+def plot_multiple_boxplots(df_runs: pd.DataFrame):
+    """
+    Plots boxplots for both aerial and aquatic fitness across multiple runs.
+    Expects df_runs to have columns: 'run_id', 'aerial_fitness', 'aquatic_fitness'.
+    """
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 5))
+
+    sns.boxplot(
+        data=df_runs,
+        x="run_id",
+        y="aerial_fitness",
+        ax=axes[0],
+        palette="viridis"
+    )
+    axes[0].set_title("Aerial Fitness")
+    axes[0].grid(True, ls="--", alpha=0.4)
+
+    sns.boxplot(
+        data=df_runs,
+        x="run_id",
+        y="aquatic_fitness",
+        ax=axes[1],
+        palette="magma"
+    )
+    axes[1].set_title("Aquatic Fitness")
+    axes[1].grid(True, ls="--", alpha=0.4)
+
+    plt.suptitle("Multiple Runs Fitness Comparison")
+    plt.show()
+
+def plot_combined_boxplots(df_runs: pd.DataFrame):
+    """
+    Plots combined boxplots for aerial and aquatic fitness across multiple runs.
+    Expects df_runs to have columns: 'run_id', 'aerial_fitness', 'aquatic_fitness'.
+    """
+
+    df_melted = df_runs.melt(
+        id_vars=["run_id"],
+        value_vars=["aerial_fitness", "aquatic_fitness"],
+        var_name="fitness_type",
+        value_name="fitness_value"
+    )
+
+    plt.figure(figsize=(10, 6))
+    sns.boxplot(
+        data=df_melted,
+        x="run_id",
+        y="fitness_value",
+        hue="fitness_type",
+        palette="Set2"
+    )
+    plt.title("Combined Aerial and Aquatic Fitness across Multiple Runs")
+    plt.xlabel("Run ID")
+    plt.ylabel("Fitness Value")
+    plt.grid(True, ls="--", alpha=0.4)
+    plt.legend(title="Fitness Type")
+    plt.show()

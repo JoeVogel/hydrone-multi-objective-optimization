@@ -84,6 +84,7 @@ if __name__ == "__main__":
     parser.add_argument("--mutation_rate", type=float, default=None)
     parser.add_argument("--pop_size", type=int, default=None)
     parser.add_argument("--generations", type=int, default=None)
+    parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
 
     # Load configurations
@@ -113,6 +114,7 @@ if __name__ == "__main__":
     nsga_mutrate    = configs["nsga2"].get("mutation_rate", 0.1)
     nsga_popsize    = configs["nsga2"].get("pop_size", 60)
     nsga_gener      = configs["nsga2"].get("generations", 60)
+    nsga_seed       = configs["nsga2"].get("seed", 42)
     
     # Overrides pelo irace
     if args.elitism_fraction is not None:
@@ -123,11 +125,13 @@ if __name__ == "__main__":
         nsga_popsize = args.pop_size
     if args.generations is not None:
         nsga_gener = args.generations
+    if args.seed is not None:
+        nsga_seed = args.seed
     
     nsga_config = {
         "population_size": nsga_popsize,
         "maximum_generations": nsga_gener,
-        "seed": configs["nsga2"].get("seed",42),
+        "seed": nsga_seed,
         "elitism_fraction": nsga_elite,
         "mutation_rate": nsga_mutrate,
     }

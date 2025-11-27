@@ -172,3 +172,10 @@ cython_debug/
 
 # Results
 src/results
+all_runs_results.json
+src/all_runs_results.json
+src/tunning/.Rhistory
+src/tunning/*.log
+src/tunning/hv_debug_raw.txt
+src/tunning/hv_error_log.txt
+src/tunning/pareto_test.json
