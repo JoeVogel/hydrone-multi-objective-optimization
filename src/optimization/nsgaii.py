@@ -616,16 +616,10 @@ class NSGAII:
         """
         Calculates a penalty based on the cavitating proportion.
         """
-        if cav > 0.50:
-            return 1.0  # Full penalty
-        elif cav > 0.20:
-            return 0.7  # Severe penalty
-        elif cav > 0.10:
-            return 0.4  # Heavy penalty
-        elif cav > 0.05:
-            return 0.2  # Moderate penalty
-        else:
-            return 0.0  # No penalty
+        
+        #linear penalty: 0% cavitation = 0 penalty, 100% cavitation = 100% penalty
+        penalty = max(0.0, min(1.0, cav))  # ensure cav is between 0 and 1
+        return penalty
 
     def run(self):
         """
