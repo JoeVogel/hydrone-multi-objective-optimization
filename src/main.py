@@ -85,6 +85,7 @@ if __name__ == "__main__":
     parser.add_argument("--pop_size", type=int, default=None)
     parser.add_argument("--generations", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--plot", type=bool, default=False)
     args = parser.parse_args()
 
     # Load configurations
@@ -150,7 +151,8 @@ if __name__ == "__main__":
     
     pareto_fronts = optimizer.run()
 
-    # plot_fronts(pareto_fronts)
+    if args.plot == True:
+        plot_fronts(pareto_fronts)
     
     # O NSGA-II retorna uma lista de frentes.
     # A primeira frente é pareto_fronts[0].

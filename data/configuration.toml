@@ -5,10 +5,10 @@ hub_radius = 0.01
 number_of_sections = 20
 
 [nsga2]
-pop_size = 100
+pop_size = 200
 generations = 100
-mutation_rate = 0.1
-elite_fraction = 0.5
+mutation_rate = 0.49
+elite_fraction = 0.22
 seed = 42
 
 [[variables]]

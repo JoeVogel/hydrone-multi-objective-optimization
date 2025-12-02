@@ -66,10 +66,10 @@ def main():
     for i in range(10):
         runs_config.append({
             "run_id": i,
-            "elitism_fraction": 0.5,
-            "mutation_rate": 0.2,
-            "pop_size": 120,
-            "generations": 80,
+            "elitism_fraction": 0.22,
+            "mutation_rate": 0.49,
+            "pop_size": 200,
+            "generations": 100,
             "seed": i * 100
         })
 
