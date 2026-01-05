@@ -12,10 +12,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from scenario                   import Scenario
-from rotor                      import Rotor
 from evaluation.aerial_methods  import AerialBEMT
 from evaluation.aquatic_methods import WaterBEMT
 from optimization.nsgaii        import NSGAII
+from motor                      import Motor
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -136,18 +136,32 @@ if __name__ == "__main__":
         "elitism_fraction": nsga_elite,
         "mutation_rate": nsga_mutrate,
     }
+
+    motor = Motor(
+        KV=configs["motor"]["KV"], 
+        voltage=configs["motor"]["voltage"], 
+        max_current=configs["motor"]["max_current"]
+    )
+
+    aerial_rpm = 4000.0  
+    aquatic_rpm = 200.0  
+
+    motor_data = {
+        "aerial_Q_max": motor.torque_available(aerial_rpm),
+        "aquatic_Q_max": motor.torque_available(aquatic_rpm),
+    }
         
     # Initialize evaluation methods
     aerial_evaluator = AerialBEMT(
-        scenario=Scenario(rpm=4000.0, v_inf=0.0)
+        scenario=Scenario(rpm=aerial_rpm, v_inf=0.0)
     )
 
     # Tip: mantain tip speed below 39 m/s (2100 rpm for 0.36 m diameter rotor)
     aquatic_evaluator = WaterBEMT(
-        scenario=Scenario(rpm=200.0, v_inf=0.0)
+        scenario=Scenario(rpm=aquatic_rpm, v_inf=0.0)
     )
     
-    optimizer = NSGAII(aerial_evaluator, aquatic_evaluator, problem_config, nsga_config)
+    optimizer = NSGAII(aerial_evaluator, aquatic_evaluator, problem_config, motor_data, nsga_config)
     
     pareto_fronts = optimizer.run()
 

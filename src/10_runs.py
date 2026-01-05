@@ -75,7 +75,7 @@ def main():
 
     results = []
 
-    workers = 5
+    workers = 10
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = []
         for cfg in runs_config:

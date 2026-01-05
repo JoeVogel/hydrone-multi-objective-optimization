@@ -1,12 +1,17 @@
 [problem]
 name = "hybrid_propeller"
-diameter = 0.3556
-hub_radius = 0.01
+diameter = 0.254
+hub_radius = 0.00825
 number_of_sections = 20
 
+[motor]
+KV = 880
+voltage = 14.8
+max_current = 20
+
 [nsga2]
-pop_size = 200
-generations = 100
+pop_size = 500
+generations = 200
 mutation_rate = 0.49
 elite_fraction = 0.22
 seed = 42

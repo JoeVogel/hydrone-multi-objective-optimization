@@ -468,6 +468,30 @@ def plot_pareto_front(df_pareto: pd.DataFrame,
 
     return fig
 
+def plot_pareto_front_matplot(df_pareto: pd.DataFrame):
+    # Plot Pareto fronts
+    plt.figure(figsize=(9, 6))
+
+    x = df_pareto["aerial_fitness"].to_numpy()
+    y = df_pareto["aquatic_fitness"].to_numpy()
+
+    order = np.argsort(x)
+    x_sorted, y_sorted = x[order], y[order]
+
+    plt.plot(x_sorted, y_sorted, lw=1.5, alpha=0.7, color="blue")
+    plt.scatter(x, y, s=60, marker="o",
+                facecolors="blue", edgecolors="black", linewidths=0.6,
+                alpha=0.9, label="Front")
+
+    plt.title("Pareto Front — NSGA-II", pad=10)
+    plt.xlabel("Aerial fitness (ηa)")
+    plt.ylabel("Aquatic fitness (ηw)")
+    plt.grid(True, which="both", ls=":", lw=0.8, alpha=0.6)
+
+    plt.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
+    plt.tight_layout()
+    plt.show()
+
 # --------------------------------------------
 
 # --- Multiple run analysis edits ---

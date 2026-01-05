@@ -26,7 +26,7 @@ https://ieeexplore.ieee.org/abstract/document/996017?casa_token=dDGNqrFAX2YAAAAA
 # https://github.com/smkalami/nsga2-in-python/blob/main/nsga2.py
 
 class NSGAII:
-    def __init__(self, aerial_evaluation_method: EvaluationMethod, aquatic_evaluation_method: EvaluationMethod, problem_configuration, nsga_configuration):
+    def __init__(self, aerial_evaluation_method: EvaluationMethod, aquatic_evaluation_method: EvaluationMethod, problem_configuration, motor_data, nsga_configuration):
         
         # TODO: adicionar checks nas configurações
         
@@ -48,6 +48,9 @@ class NSGAII:
         self.seed                   = nsga_configuration["seed"]
         self.elitism_fraction       = nsga_configuration["elitism_fraction"]
         self.mutation_rate          = nsga_configuration["mutation_rate"]
+
+        self.aerial_Q_max   = motor_data["aerial_Q_max"]
+        self.aquatic_Q_max  = motor_data["aquatic_Q_max"]
 
         self.hub_diameter = self.hub_radius * 2 
 
@@ -73,9 +76,9 @@ class NSGAII:
             # Scenario (for traceability)
             "aerial_rpm", "aerial_v_inf", "aquatic_rpm", "aquatic_v_inf",
             # aerial metrics
-            "aerial_T","aerial_Q","aerial_P","aerial_J","aerial_CT","aerial_CQ","aerial_CP","aerial_eta", "FM", "aerial_fitness",
+            "aerial_T","aerial_Q","aerial_P","aerial_J","aerial_CT","aerial_CQ","aerial_CP","aerial_eta", "FM", "aerial_fitness", "aerial_Q_penalty",
             # water metrics
-            "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta", "cavitating_proportion", "QI","aquatic_fitness",
+            "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta", "cavitating_proportion", "QI","aquatic_fitness", "cavitation_penalty", "aquatic_Q_penalty",
         ]
 
         with self.eval_csv_path.open("w", newline="") as f:
@@ -122,6 +125,7 @@ class NSGAII:
             "aerial_CP":  "" if aerial  is None else aerial.get("CP",""),
             "aerial_eta": "" if aerial  is None else aerial.get("eta",""),
             "FM": "" if aerial  is None else aerial.get("FM",""),
+            "aerial_Q_penalty": "" if aerial  is None else aerial.get("Q_penalty",""),
             "aerial_fitness": getattr(individual, "aerial_fitness", ""),
 
             "aquatic_T":   "" if aquatic is None else aquatic.get("T",""),
@@ -133,6 +137,8 @@ class NSGAII:
             "aquatic_CP":  "" if aquatic is None else aquatic.get("CP",""),
             "aquatic_eta": "" if aquatic is None else aquatic.get("eta",""),
             "cavitating_proportion": "" if aquatic is None else aquatic.get("cavitating_proportion",""),
+            "aquatic_Q_penalty": "" if aquatic is None else aquatic.get("Q_penalty",""),
+            "cavitation_penalty": "" if aquatic is None else aquatic.get("cavitation_penalty",""),
             "QI": "" if aquatic is None else aquatic.get("QI",""),
             "aquatic_fitness": getattr(individual, "aquatic_fitness", ""),
         }
@@ -164,11 +170,15 @@ class NSGAII:
             a = w = None
 
             aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
-            a = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM}
+            aQ_penalty = self._torque_penalty(aQ, self.aerial_Q_max)
+
+            a = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "Q_penalty": aQ_penalty}
 
             wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
-            w = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI}
+            cavitation_penalty = self._cavitation_penalty(cavitating_proportion)
+            wQ_penalty = self._torque_penalty(wQ, self.aquatic_Q_max)
 
+            w = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "Q_penalty": wQ_penalty}
 
             self._append_eval_row(
                 generation="",  # último gen
@@ -621,6 +631,39 @@ class NSGAII:
         penalty = max(0.0, min(1.0, cav))  # ensure cav is between 0 and 1
         return penalty
 
+    def _torque_penalty(self, T, T_max):
+        """
+        Returns a penalty based on how much the required torque exceeds T_max.
+
+        Output is clamped between 0 and 1.
+        """
+
+        if T <= T_max:
+            return 0.0
+
+        penalty = (T - T_max) / T
+
+        penalty = max(0.0, min(1.0, penalty))
+
+        return penalty
+
+    def _compute_aerial_fitness(self, raw_result, aQ_penalty):
+        """
+        Computes aerial fitness based on efficiency and torque penalty.
+        """
+        fitness = raw_result * (1.0 - aQ_penalty)
+        return fitness
+    
+    def _compute_aquatic_fitness(self, raw_result, cavitation_penalty, wQ_penalty):
+        """
+        Computes aquatic fitness based on efficiency, cavitation penalty, and torque penalty.
+        """
+        combined_factor = (1.0 - cavitation_penalty) * (1.0 - wQ_penalty)
+        combined_factor = max(0.0, min(1.0, combined_factor))
+
+        fitness = raw_result * combined_factor
+        return fitness
+
     def run(self):
         """
         Executes the NSGA-II optimization process and returns Pareto fronts.
@@ -647,35 +690,41 @@ class NSGAII:
                 
                 try:
                     aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
+                    
+                    aQ_penalty = self._torque_penalty(aQ, self.aerial_Q_max)
 
                     if (aJ == 0):
-                        individual.aerial_fitness = FM  # Usar Figure of Merit como fitness em condição de hover
+                        # Use Figure of Merit in hover
+                        individual.aerial_fitness = self._compute_aerial_fitness(FM, aQ_penalty)
                     else:
-                        individual.aerial_fitness = aEta  # Usar eficiência normal em outras condições
+                        # Use efficiency otherwise
+                        individual.aerial_fitness = self._compute_aerial_fitness(aEta, aQ_penalty)  
 
-                    aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM}
+                    aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "Q_penalty": aQ_penalty}
                 except Exception as e:
                     logger.warning(f"[NSGA] Aerial eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
-                    individual.aerial_fitness = 0.0  # penalização
+                    individual.aerial_fitness = 0.0  # penalization
                     aerial = None
                 
                 try:
                     wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
                     
                     individual.cavitating_proportion = cavitating_proportion
+                
+                    cavitation_penalty  = self._cavitation_penalty(cavitating_proportion)
+                    wQ_penalty          = self._torque_penalty(wQ, self.aquatic_Q_max)
 
                     if (wJ == 0):
-                        fitness_raw = QI  # Usar Quality Index como fitness em condição de amarra
+                        # Use Quality Index as fitness in bollard pull
+                        individual.aquatic_fitness = self._compute_aquatic_fitness(QI, cavitating_proportion, wQ_penalty) 
                     else:
-                        fitness_raw = wEta  # Usar eficiência normal em outras condições
+                        # Use efficiency otherwise
+                        individual.aquatic_fitness = self._compute_aquatic_fitness(wEta, cavitating_proportion, wQ_penalty)
 
-                    cavitation_penalty = self._cavitation_penalty(cavitating_proportion)
-                    individual.aquatic_fitness = fitness_raw * (1.0 - cavitation_penalty)
-
-                    aquatic = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI}
+                    aquatic = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "Q_penalty": wQ_penalty}
                 except Exception as e:
                     logger.warning(f"[NSGA] Aquatic eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
-                    individual.aquatic_fitness = -1e6  # penalização
+                    individual.aquatic_fitness = -1e6  # penalization
                     aquatic = None
                 
                 self._append_eval_row(
