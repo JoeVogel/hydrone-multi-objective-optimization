@@ -10,6 +10,9 @@ Ncrit,{ncrit}
 Mach,{mach}
 Max Cl/Cd,{max_ld:.4f}
 Max Cl/Cd alpha,{max_ld_alpha:g}
+Clmax,{clmax:.4f}
+Clmax alpha,{clmax_alpha:g}
+Stall alpha,{stall_alpha:g}
 
 
 Alpha,Cl,Cd,Cdp,Cm,Top_Xtr,Bot_Xtr
@@ -80,6 +83,51 @@ def compute_max_ld(data):
         return 0.0, 0.0
     return max_ld, max_a
 
+def compute_clmax(data):
+    """Returns (clmax, alpha_at_clmax)."""
+    if not data:
+        return 0.0, 0.0
+    best = max(data, key=lambda r: r["Cl"])
+    return best["Cl"], best["Alpha"]
+
+def compute_stall_alpha(data, clmax_alpha, clmax, mode="at_clmax", drop_pct=0.05):
+    """
+    mode:
+      - "at_clmax": stall_alpha = alpha_at_clmax (robust for polars with post-stall weird values, common in XFOIL)
+      - "drop": first alpha > alpha_at_clmax where Cl <= (1-drop_pct)*Clmax
+    """
+    if not data:
+        return 0.0
+
+    if mode == "at_clmax":
+        return clmax_alpha
+
+    if mode == "drop":
+        thresh = (1.0 - drop_pct) * clmax
+        # procura o primeiro ponto APÓS CLmax onde Cl caiu o suficiente
+        for r in data:
+            if r["Alpha"] > clmax_alpha and r["Cl"] <= thresh:
+                return r["Alpha"]
+        # se não achou queda suficiente, cai para alpha_at_clmax
+        return clmax_alpha
+
+    raise ValueError(f"Unknown stall mode: {mode}")
+
+def invalidate_if_clmax_at_last_alpha(data, clmax, clmax_alpha, stall_alpha, eps=1e-9):
+    """
+    If alpha at CLmax is exactly the last alpha in the polar,
+    invalidate CLmax, alpha(CLmax) and stall alpha returning NaN.
+    """
+    if not data:
+        return clmax, clmax_alpha, stall_alpha
+
+    alpha_last = data[-1]["Alpha"]  # data já está ordenado por Alpha após normalize_sort_dedup
+    if abs(clmax_alpha - alpha_last) <= eps:
+        nan = float("nan")
+        return nan, nan, nan
+
+    return clmax, clmax_alpha, stall_alpha
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("input", help="Arquivo polar bruto do XFOIL (PACC)")
@@ -88,6 +136,10 @@ def main():
     ap.add_argument("--re", type=int, required=True, help="Reynolds number (ex.: 40000)")
     ap.add_argument("--ncrit", type=int, default=5)
     ap.add_argument("--mach", type=float, default=0.0)
+    ap.add_argument("--stall-mode", choices=["at_clmax", "drop"], default="at_clmax",
+                help="Critério para stall alpha: 'at_clmax' ou 'drop'")
+    ap.add_argument("--stall-drop-pct", type=float, default=0.05,
+                help="Usado quando --stall-mode=drop. Ex.: 0.05 = queda de 5%% do Clmax")
     args = ap.parse_args()
 
     with open(args.input, "r", encoding="utf-8", errors="ignore") as f:
@@ -102,11 +154,34 @@ def main():
 
     # calcular Max Cl/Cd
     max_ld, max_a = compute_max_ld(data)
+    
+    # calcular Clmax e alpha(Clmax)
+    clmax, clmax_a = compute_clmax(data)
+
+    # calcular stall alpha
+    stall_a = compute_stall_alpha(
+        data,
+        clmax_alpha=clmax_a,
+        clmax=clmax,
+        mode=args.stall_mode,
+        drop_pct=args.stall_drop_pct,
+    )
+    
+    # invalidar os valores de clmax, clmax_a e stall_a se clmax_a for o último alpha
+    clmax, clmax_a, stall_a = invalidate_if_clmax_at_last_alpha(data, clmax, clmax_a, stall_a)
 
     polar_key = f"xf-{args.airfoil}-{args.re}-n{args.ncrit}"
     header = HEADER_TEMPLATE.format(
-        polar_key=polar_key, airfoil=args.airfoil, reynolds=args.re,
-        ncrit=args.ncrit, mach=args.mach, max_ld=max_ld, max_ld_alpha=max_a
+        polar_key=polar_key, 
+        airfoil=args.airfoil, 
+        reynolds=args.re, 
+        ncrit=args.ncrit, 
+        mach=args.mach, 
+        max_ld=max_ld, 
+        max_ld_alpha=max_a, 
+        clmax=clmax, 
+        clmax_alpha=clmax_a,
+        stall_alpha=stall_a
     )
 
     with open(args.output, "w", encoding="utf-8") as out:
@@ -122,7 +197,7 @@ if __name__ == "__main__":
     
     Usage example:
     
-    python xfoil_polar_to_airfoiltools.py NACA0018_10000.txt NACA0018_10000.csv --airfoil naca0018-il --re 10000 --ncrit 5 --mach 0
+    python xfoil_polar_to_airfoiltools.py NACA0018_10000.txt NACA0018_10000.csv --airfoil naca0018-il --re 10000 --ncrit 5 --mach 0 --stall-mode drop --stall-drop-pct 0.05 
 
     or
     

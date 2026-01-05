@@ -11,7 +11,7 @@ xfoil.exe < <.inp file>
 You can use the xfoil_polar_to_airfoiltools.py to convert to the format accepted by airfoil.py, for example:
 
 ```
-python xfoil_polar_to_airfoiltools.py NACA_0018_10000.txt NACA_0018_10000.csv --airfoil naca0018-il --re 10000 --ncrit 5 --mach 0
+python xfoil_polar_to_airfoiltools.py NACA0018_10000.txt NACA0018_10000.csv --airfoil naca0018-il --re 10000 --ncrit 5 --mach 0 --stall-mode drop --stall-drop-pct 0.05
 
 or
     
