@@ -1,6 +1,6 @@
 NACA 4412 il
 PPAR
-N 200
+N 240
 T 1.0
 R 0.15
 
@@ -17,8 +17,12 @@ VACC 0.01
 PACC
 NACA4412_40000.txt
 
+# ---- Start from a clean reference point ----
 ALFA 0
-ASEQ 0 30 0.25
+ASEQ 0 30 0.1
+# ---- Re-initialize BL before sweeping positive to reduce failures ----
+INIT
+ALFA 0
 ASEQ 0 -15 -0.25
 PACC
 

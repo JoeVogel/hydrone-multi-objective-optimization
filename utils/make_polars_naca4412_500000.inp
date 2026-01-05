@@ -8,14 +8,14 @@ R 0.15
 PANE
 OPER
 MACH 0
-VISC 20000
+VISC 500000
 ITER 200
 VPAR
 N 5
 VACC 0.01
 
 PACC
-NACA4412_20000.txt
+NACA4412_500000.txt
 
 # ---- Start from a clean reference point ----
 ALFA 0
