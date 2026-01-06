@@ -75,7 +75,7 @@ def _read_airfoiltools_header(path):
 def _read_polar_file_with_meta(path):
     """
     Reads a polar file (.csv AirfoilTools or .dat XFOIL).
-    Returns: (alpha_deg, Cl, Cd, Re or None)
+    Returns: (alpha_deg, Cl, Cd, Re, stall_alpha or None)
     """
     import os
     ext = os.path.splitext(path)[1].lower()
@@ -97,13 +97,21 @@ def _read_polar_file_with_meta(path):
                 raise ValueError(f"Invalid Reynolds number in header of: {path}")
         else:
             raise ValueError(f"Reynolds number not found in header : {path}")
+        
+        # Stall alpha
+        stall_alpha = None
+        if 'Stall alpha' in meta:
+            try:
+                stall_alpha = float(meta['Stall alpha'])
+            except ValueError:
+                stall_alpha = None
 
-        return alpha, Cl, Cd, Re
+        return alpha, Cl, Cd, Re, stall_alpha
 
     elif ext == '.dat':
         # XFOIL .dat "clássico": não tem meta com Re
         alpha, Cl, Cd = np.loadtxt(path, skiprows=14, unpack=True)
-        return alpha, Cl, Cd, None
+        return alpha, Cl, Cd, None, None
 
     else:
         raise ValueError(f"File format not supported: {path}")
@@ -192,8 +200,20 @@ class Airfoil:
         self._cpmin_re_list = []  # sorted Re list for cp_min
         self.Cp_min_func = None   # single-Re fallback
         self.cpmin_alpha_ = None  # single-Re alpha cache
+        
+        # Stall alpha (multi-Re)
+        self._stall_alpha = {}      # Re -> stall_alpha_deg (float)
+        self._stall_re_list = []    # sorted list of Re for which stall is available
 
         self.zero_lift = 0.0
+        
+        # --- Out-of-range alpha handling (validation vs optimization) ---
+        #  - "nan": return NaN outside trusted range (recommended for optimization)
+        #  - "clamp": clamp alpha to trusted range
+        #  - "clamp_drag_penalty": clamp Cl/Cpmin, but increase Cd outside range (recommended for validation)
+        self.out_of_range_policy = "clamp_drag_penalty"
+        self.drag_penalty_k = 0.02  # Cd *= (1 + k * delta_alpha_deg^2) when outside trusted range. May need some fine tune.
+        self.enable_oor_logging = False
         
     def _normalize_angle(self, alpha):
         """
@@ -206,6 +226,71 @@ class Airfoil:
 
         return atan2(sin(alpha), cos(alpha))
     
+    def _sanitize_re(self, Re: Optional[float]) -> float:
+        """Ensure Reynolds is finite and strictly positive for log(Re) interpolation."""
+        if not self.re_list:
+            return float(Re) if Re is not None else float("nan")
+
+        if Re is None:
+            return float(self.default_Re or self.re_list[len(self.re_list)//2])
+
+        Re = float(Re)
+        if (not np.isfinite(Re)) or (Re <= 0.0):
+            return float(self.default_Re or self.re_list[0])
+
+        # clamp to minimum available to avoid extreme low-Re extrapolation
+        Re_min = float(self.re_list[0])
+        if Re < Re_min:
+            return Re_min
+        return Re
+
+    def _eval_clipped(self, func: interp1d, alpha_deg: float) -> float:
+        """Evaluate interp1d safely by clamping alpha to its support."""
+        a_min = float(np.min(func.x))
+        a_max = float(np.max(func.x))
+        a = max(a_min, min(a_max, float(alpha_deg)))
+        return float(func(a))
+
+    def _trusted_alpha_limit_deg(self, Re: Optional[float] = None):
+        """Return (limit_deg, data_abs_max_deg) for alpha lookup."""
+        if self.re_list:
+            use_Re = self._sanitize_re(Re)
+            func = self._cl_funcs.get(use_Re, self._cl_funcs[self.re_list[0]])
+            data_abs_max = float(np.max(np.abs(func.x)))
+        else:
+            data_abs_max = float(np.max(np.abs(self.alpha_))) if self.alpha_ is not None else float("nan")
+
+        stall = float("nan")
+        try:
+            stall = float(self.stall_alpha(Re))
+        except Exception:
+            stall = float("nan")
+
+        limit = min(abs(stall), data_abs_max) if np.isfinite(stall) else data_abs_max
+        return float(limit), float(data_abs_max)
+
+    def _apply_oor_policy(self, alpha_deg: float, Re: Optional[float] = None):
+        """Apply out-of-range alpha policy. Returns (alpha_eff_deg, delta_deg, limit_deg)."""
+        limit_deg, _ = self._trusted_alpha_limit_deg(Re)
+        if not np.isfinite(limit_deg):
+            return float("nan"), float("nan"), float("nan")
+
+        abs_a = abs(float(alpha_deg))
+        delta = max(0.0, abs_a - limit_deg)
+
+        if delta <= 0.0:
+            return float(alpha_deg), 0.0, float(limit_deg)
+
+        pol = getattr(self, "out_of_range_policy", "nan")
+        if pol == "nan":
+            return float("nan"), float(delta), float(limit_deg)
+
+        alpha_clamped = float(np.sign(alpha_deg) * limit_deg)
+        if getattr(self, "enable_oor_logging", False):
+            print(f"[Airfoil:{self.name}] alpha out-of-range: {alpha_deg:.3f} deg (limit {limit_deg:.3f}), policy={pol}")
+        return alpha_clamped, float(delta), float(limit_deg)
+
+    
     # ---------- Public API ----------
 
     def Cl(self, alpha, Re=None):
@@ -213,83 +298,166 @@ class Airfoil:
         Lift coefficient at given angle of attack (in radians) and Reynolds number.
         If multi-Re and Re is None, uses the default_Re (median of available Re).
         If only single-Re data is available, Re is ignored.
+        Out-of-range alpha handling is controlled by self.out_of_range_policy
         :param float alpha: Angle of attack in radians
         :param float Re: Reynolds number (optional)
         """
         alpha_deg = -self.zero_lift + degrees(self._normalize_angle(alpha))
-        if self.re_list:  # multi-Re mode
-            use_Re = Re if Re is not None else (self.default_Re or self.re_list[len(self.re_list)//2])
-            return self._cl_alpha_re(alpha_deg, use_Re)   # Uses Re dictionary
-        # single-Re fallback
-        return float(self.Cl_func(alpha_deg))
+        
+        alpha_eff, _, _ = self._apply_oor_policy(alpha_deg, Re)
+        if np.isnan(alpha_eff):
+            return float("nan")
+            
+        if self.re_list:
+            use_Re = self._sanitize_re(Re)
+            return self._cl_alpha_re(alpha_eff, use_Re)
+
+        return float(self.Cl_func(alpha_eff))
 
     def Cd(self, alpha, Re=None):
         """
         Drag coefficient at given angle of attack (in radians) and Reynolds number.
-        If multi-Re and Re is None, uses the default_Re (median of available Re).
-        If only single-Re data is available, Re is ignored.
+        Out-of-range alpha handling is controlled by self.out_of_range_policy.
+        If policy is 'clamp_drag_penalty', Cd is increased outside trusted range.
         :param float alpha: Angle of attack in radians
         :param float Re: Reynolds number (optional)
         """
         alpha_deg = -self.zero_lift + degrees(self._normalize_angle(alpha))
+        
+        alpha_eff, delta_deg, _ = self._apply_oor_policy(alpha_deg, Re)
+        if np.isnan(alpha_eff):
+            return float("nan")
+        
         if self.re_list:
-            use_Re = Re if Re is not None else (self.default_Re or self.re_list[len(self.re_list)//2])
-            return self._cd_alpha_re(alpha_deg, use_Re)
-        return float(self.Cd_func(alpha_deg))
+            use_Re = self._sanitize_re(Re)
+            cd = self._cd_alpha_re(alpha_eff, use_Re)
+        else:
+            cd = float(self.Cd_func(alpha_eff))
+            
+        pol = getattr(self, "out_of_range_policy", "nan")
+        if pol == "clamp_drag_penalty" and delta_deg > 0.0 and np.isfinite(cd):
+            k = float(getattr(self, "drag_penalty_k", 0.02))
+            cd = cd * (1.0 + k * (delta_deg ** 2))
+
+        return float(cd)
 
     def Cp_min(self, alpha, Re=None):
         """
         Minimum pressure coefficient at given angle (radians) and Reynolds number.
         Uses bilinear interpolation in (alpha, Re). If only one Re is available, the Re argument is ignored.
+        Out-of-range alpha handling is controlled by self.out_of_range_policy.
+        :param float alpha: Angle of attack in radians
+        :param float Re: Reynolds number (optional)
         """
         alpha_deg = -self.zero_lift + degrees(self._normalize_angle(alpha))
-        # multi-Re cp_min
+        
+        alpha_eff, _, _ = self._apply_oor_policy(alpha_deg, Re)
+        if np.isnan(alpha_eff):
+            return float("nan")
+        
         if self._cpmin_re_list:
             use_Re = Re if Re is not None else (self._cpmin_re_list[len(self._cpmin_re_list)//2])
-            return self._cpmin_bilinear(alpha_deg, use_Re)
-        # single-Re fallback
+            use_Re = float(use_Re)
+            if (not np.isfinite(use_Re)) or (use_Re <= 0.0):
+                use_Re = float(self._cpmin_re_list[0])
+            return self._cpmin_bilinear(alpha_eff, use_Re)
+
         if self.Cp_min_func is None:
             raise ValueError(f'cp_min data not loaded for {self.name}')
-        return float(self.Cp_min_func(alpha_deg))
+            
+        return float(self.Cp_min_func(alpha_eff))
+
+    def stall_alpha(self, Re=None):
+        """
+        Returns stall alpha in degrees for a given Reynolds number.
+        If multi-Re and Re is None, uses default_Re (or median).
+        If stall data is missing, returns NaN.
+        """
+        if not self._stall_re_list:
+            return float("nan")
+
+        use_Re = Re if Re is not None else (self.default_Re or self._stall_re_list[len(self._stall_re_list)//2])
+        try:
+            use_Re = float(use_Re)
+        except Exception:
+            use_Re = float(self.default_Re or self._stall_re_list[0])
+
+        if (not np.isfinite(use_Re)) or (use_Re <= 0.0):
+            use_Re = float(self.default_Re or self._stall_re_list[0])
+
+        # exact match
+        if use_Re in self._stall_alpha:
+            return float(self._stall_alpha[use_Re])
+
+        # interpolate
+        re_sorted = self._stall_re_list
+        if len(re_sorted) == 1:
+            return float(self._stall_alpha[re_sorted[0]])
+
+        i = bisect_left(re_sorted, use_Re)
+
+        if i == 0:
+            r1, r2 = re_sorted[0], re_sorted[1]
+        elif i >= len(re_sorted):
+            r1, r2 = re_sorted[-2], re_sorted[-1]
+        else:
+            r1, r2 = re_sorted[i-1], re_sorted[i]
+
+        v1 = float(self._stall_alpha[r1])
+        v2 = float(self._stall_alpha[r2])
+
+        w = (np.log(use_Re) - np.log(r1)) / (np.log(r2) - np.log(r1))
+        return float((1.0 - w) * v1 + w * v2)
+
 
     # ---------- Internal helpers for multi-Re ----------
     def _cl_alpha_re(self, alpha_deg, Re):
-        # exact Re?
         if Re in self._cl_funcs:
-            return float(self._cl_funcs[Re](alpha_deg))
-        # else interpolate in logRe between neighbors
+            return self._eval_clipped(self._cl_funcs[Re], alpha_deg)
         return self._interp_in_logRe(alpha_deg, Re, self._cl_funcs)
 
     def _cd_alpha_re(self, alpha_deg, Re):
         if Re in self._cd_funcs:
-            return float(self._cd_funcs[Re](alpha_deg))
+            return self._eval_clipped(self._cd_funcs[Re], alpha_deg)
         return self._interp_in_logRe(alpha_deg, Re, self._cd_funcs)
 
     def _interp_in_logRe(self, alpha_deg, Re, func_dict):
         # find neighbors in re_list
         re_sorted = self.re_list
+        
+        try:
+            Re = float(Re)
+        except Exception:
+            Re = float(re_sorted[0])
+            
+        if (not np.isfinite(Re)) or (Re <= 0.0):
+            Re = float(re_sorted[0])
+        
+        if len(re_sorted) == 1:
+            return self._eval_clipped(func_dict[re_sorted[0]], alpha_deg)
+            
         logRe = np.log(Re)
         logRe_list = np.log(np.array(re_sorted))
         i = bisect_left(re_sorted, Re)
 
         if i == 0:
             # below smallest: extrapolate linearly in logRe
-            f1 = func_dict[re_sorted[0]](alpha_deg)
-            f2 = func_dict[re_sorted[1]](alpha_deg)
+            f1 = self._eval_clipped(func_dict[re_sorted[0]], alpha_deg)
+            f2 = self._eval_clipped(func_dict[re_sorted[1]], alpha_deg)
             w = (logRe - logRe_list[0]) / (logRe_list[1] - logRe_list[0])
             return float((1 - w) * f1 + w * f2)
 
         if i >= len(re_sorted):
             # above largest: extrapolate
-            f1 = func_dict[re_sorted[-2]](alpha_deg)
-            f2 = func_dict[re_sorted[-1]](alpha_deg)
+            f1 = self._eval_clipped(func_dict[re_sorted[-2]], alpha_deg)
+            f2 = self._eval_clipped(func_dict[re_sorted[-1]], alpha_deg)
             w = (logRe - logRe_list[-2]) / (logRe_list[-1] - logRe_list[-2])
             return float((1 - w) * f1 + w * f2)
 
         # between i-1 and i
         re1, re2 = re_sorted[i-1], re_sorted[i]
-        f1 = func_dict[re1](alpha_deg)
-        f2 = func_dict[re2](alpha_deg)
+        f1 = self._eval_clipped(func_dict[re1], alpha_deg)
+        f2 = self._eval_clipped(func_dict[re2], alpha_deg)
         w = (logRe - np.log(re1)) / (np.log(re2) - np.log(re1))
         return float((1 - w) * f1 + w * f2)
 
@@ -302,10 +470,21 @@ class Airfoil:
         re_sorted = self._cpmin_re_list
         if not re_sorted:
             raise ValueError(f'cp_min data not loaded for {self.name}')
+            
+        try:
+            Re = float(Re)
+        except Exception:
+            Re = float(re_sorted[0])
+
+        if (not np.isfinite(Re)) or (Re <= 0.0):
+            Re = float(re_sorted[0])
 
         # Exact match
         if Re in self._cp_min_funcs:
-            return float(self._cp_min_funcs[Re](alpha_deg))
+            return self._eval_clipped(self._cp_min_funcs[Re], alpha_deg)
+
+        if len(re_sorted) == 1:
+            return self._eval_clipped(self._cp_min_funcs[re_sorted[0]], alpha_deg)
 
         # Find bounding Re values
         i = bisect_left(re_sorted, Re)
@@ -316,8 +495,8 @@ class Airfoil:
         else:
             r1, r2 = re_sorted[i - 1], re_sorted[i]
 
-        v1 = self._cp_min_funcs[r1](alpha_deg)
-        v2 = self._cp_min_funcs[r2](alpha_deg)
+        v1 = self._eval_clipped(self._cp_min_funcs[r1], alpha_deg)
+        v2 = self._eval_clipped(self._cp_min_funcs[r2], alpha_deg)
 
         # Linear interpolation in Re
         w = (Re - r1) / (r2 - r1)
@@ -466,13 +645,13 @@ def load_airfoil(name):
         raise FileNotFoundError(f'No polar files for airfoil {name}')
 
     # Carrega todos e separa por Re
-    with_re = []   # lista de (Re, alpha, Cl, Cd)
+    with_re = []   # lista de (Re, alpha, Cl, Cd, stall_alpha)
     defaults = []  # sem Re detectado
 
     for p in candidates:
-        alpha, Cl, Cd, Re = _read_polar_file_with_meta(p)
+        alpha, Cl, Cd, Re, stall_alpha = _read_polar_file_with_meta(p)
         if Re is not None:
-            with_re.append((Re, alpha, Cl, Cd))
+            with_re.append((Re, alpha, Cl, Cd, stall_alpha))
         else:
             defaults.append((alpha, Cl, Cd))
 
@@ -485,30 +664,37 @@ def load_airfoil(name):
             _, alpha_deg_c, cpmin_c = cpmin_tables[0]
             a.cpmin_alpha_ = alpha_deg_c
             a.Cp_min_func = interp1d(alpha_deg_c, cpmin_c, kind='linear',
-                                     bounds_error=False, fill_value='extrapolate')
+                                     bounds_error=False, fill_value=(cpmin_c[0], cpmin_c[-1]))
         else:
             for Re_val, alpha_deg_c, cpmin_c in cpmin_tables:
                 a._cp_min_funcs[Re_val] = interp1d(alpha_deg_c, cpmin_c, kind='linear',
-                                                   bounds_error=False, fill_value='extrapolate')
+                                     bounds_error=False, fill_value=(cpmin_c[0], cpmin_c[-1]))
 
     if with_re:
         # Multi-Re: ordena por Re
         with_re.sort(key=lambda t: t[0])
         a.re_list = [t[0] for t in with_re]
-        for Re_val, alpha_deg, Cl, Cd in with_re:
-            clf = interp1d(alpha_deg, Cl, kind='quadratic', bounds_error=False, fill_value='extrapolate')
-            cdf = interp1d(alpha_deg, Cd, kind='quadratic', bounds_error=False, fill_value='extrapolate')
+        for Re_val, alpha_deg, Cl, Cd, stall_a in with_re:
+            clf = interp1d(alpha_deg, Cl, kind='linear', bounds_error=False, fill_value=(Cl[0], Cl[-1]))
+            cdf = interp1d(alpha_deg, Cd, kind='linear', bounds_error=False, fill_value=(Cd[0], Cd[-1]))
             a._cl_funcs[Re_val] = clf
             a._cd_funcs[Re_val] = cdf
+            
+            if stall_a is not None and not np.isnan(stall_a):
+                a._stall_alpha[Re_val] = float(stall_a)
+        
+        a._stall_re_list = sorted(a._stall_alpha.keys())
+        
         a.default_Re = a.re_list[len(a.re_list)//2]  # pick median Re as default
+        
         return a
 
     # Fallback: single-Re (nenhum arquivo tinha 'Reynolds number' no cabeçalho)
     if defaults:
         alpha_deg, Cl, Cd = defaults[0]
         a.alpha_, a.Cl_, a.Cd_ = alpha_deg, Cl, Cd
-        a.Cl_func = interp1d(a.alpha_, a.Cl_, kind='quadratic', bounds_error=False, fill_value='extrapolate')
-        a.Cd_func = interp1d(a.alpha_, a.Cd_, kind='quadratic', bounds_error=False, fill_value='extrapolate')
+        a.Cl_func = interp1d(a.alpha_, a.Cl_, kind='linear', bounds_error=False, fill_value=(a.Cl_[0], a.Cl_[-1]))
+        a.Cd_func = interp1d(a.alpha_, a.Cd_, kind='linear', bounds_error=False, fill_value=(a.Cd_[0], a.Cd_[-1]))
         return a
 
     raise FileNotFoundError(f'No usable polar files for airfoil {name}')
