@@ -122,6 +122,16 @@ def write_xfoil_inp(
     else:
         raise ValueError("Provide either --foil-file or --naca.")
 
+    plot_execution = True
+
+    if not plot_execution:
+        lines += [
+            "PLOP",
+            "G",
+            "0",
+            "",
+        ]
+
     # Paneling
     lines += [
         "PPAR",
@@ -156,6 +166,7 @@ def write_xfoil_inp(
         lines += [
             f"ALFA {a:.2f}",
             f"CPWR {cp_rel.as_posix()}",
+            "INIT",
         ]
 
     # Stop saving polar
@@ -280,11 +291,12 @@ def main():
     ap.add_argument("--xfoil-bin", default="xfoil", help="XFOIL binary name/path.")
     ap.add_argument("--save-polar", action="store_true", help="Also PACC a new polar during the run.")
     # Paneling/visc options (tune as needed)
-    ap.add_argument("--n-pan", type=int, default=200, help="PPAR N")
+    ap.add_argument("--n-pan", type=int, default=240, help="PPAR N")
     ap.add_argument("--t-pan", type=float, default=1.0, help="PPAR T")
     ap.add_argument("--r-le", type=float, default=0.15, help="PPAR R")
     ap.add_argument("--vpar-n", type=int, default=5, help="VPAR N")
-    ap.add_argument("--vacc", type=float, default=0.01, help="VPAR VACC")
+    ap.add_argument("--vacc", type=float, default=0.0, help="VPAR VACC")
+    ap.add_argument("--stall-alpha", type=float, default=None, help="Angle of attack when stall occurs.")
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -304,6 +316,15 @@ def main():
         sys.exit(3)
 
     print(f"[i] Found {len(angles)} angles in polar: min={min(angles):.2f}°, max={max(angles):.2f}°")
+
+    if args.stall_alpha is not None:
+        sa = abs(args.stall_alpha)
+        angles_before = len(angles)
+        angles = [a for a in angles if (-sa <= a <= sa)]
+        print(f"[i] Stall filter enabled: |alpha| <= {sa:.2f}°  -> kept {len(angles)}/{angles_before} angles")
+        if not angles:
+            print("ERROR: Stall filter removed all angles. Check --stall-alpha vs. polar range.", file=sys.stderr)
+            sys.exit(3)
 
     cp_dir = out_dir / "cp"
     inp_path = out_dir / "run_xfoil_cp.inp"
