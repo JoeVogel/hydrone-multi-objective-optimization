@@ -211,7 +211,7 @@ class Airfoil:
         #  - "nan": return NaN outside trusted range (recommended for optimization)
         #  - "clamp": clamp alpha to trusted range
         #  - "clamp_drag_penalty": clamp Cl/Cpmin, but increase Cd outside range (recommended for validation)
-        self.out_of_range_policy = "clamp_drag_penalty"
+        self.out_of_range_policy = "nan"
         self.drag_penalty_k = 0.02  # Cd *= (1 + k * delta_alpha_deg^2) when outside trusted range. May need some fine tune.
         self.enable_oor_logging = False
         

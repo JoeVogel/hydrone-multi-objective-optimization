@@ -50,6 +50,9 @@ class AerialBEMT(EvaluationMethod):
 
         if P <= 0:
             return 0.0
+        
+        if T <= 0:
+            return 0.0
 
         FM_raw = (T**(3/2)) / (P * sqrt(2 * rho * A))
 

@@ -88,6 +88,15 @@ class NSGAII:
         logger.info(f"[NSGA-II] Result dir: {self.run_dir}")
 
     @staticmethod
+    def _safe_real(x):
+        """Check if value is a valid real number. If not return 0.0"""
+        if isinstance(x, complex):
+            return 0.0
+        if x is None or not math.isfinite(float(x)):
+            return 0.0
+        return float(x)
+
+    @staticmethod
     def _serialize_list(value):
         """Converts lists/tuples to 'v1;v2;v3' string. Keeps '' for None."""
         if value is None:
@@ -315,6 +324,8 @@ class NSGAII:
         for p in population:
             p.dominated_solutions = []
             p.domination_count = 0
+            p.rank = None
+            p.crowding_distance = 0.0
 
             for q in population:
                 if self._dominates(p, q):
@@ -700,6 +711,8 @@ class NSGAII:
                         # Use efficiency otherwise
                         individual.aerial_fitness = self._compute_aerial_fitness(aEta, aQ_penalty)  
 
+                    individual.aerial_fitness = self._safe_real(individual.aerial_fitness) # se ainda estiver gerando um complex type
+
                     aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "Q_penalty": aQ_penalty}
                 except Exception as e:
                     logger.warning(f"[NSGA] Aerial eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
@@ -720,6 +733,8 @@ class NSGAII:
                     else:
                         # Use efficiency otherwise
                         individual.aquatic_fitness = self._compute_aquatic_fitness(wEta, cavitating_proportion, wQ_penalty)
+
+                    individual.aquatic_fitness = self._safe_real(individual.aquatic_fitness) # se ainda estiver gerando um complex type
 
                     aquatic = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "Q_penalty": wQ_penalty}
                 except Exception as e:

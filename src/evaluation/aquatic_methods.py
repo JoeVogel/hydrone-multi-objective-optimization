@@ -145,7 +145,7 @@ class WaterBEMT(EvaluationMethod):
             1.5 is equivalente to raising to the power of 3/2.
         """
 
-        if KQ <= 0:
+        if KQ <= 0 or KT <= 0:
             return 0.0
 
         return (1 / (pi * sqrt(2 * pi))) * ((KT ** 1.5) / KQ)
