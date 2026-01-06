@@ -1,5 +1,6 @@
 import logging
 import math
+import matplotlib
 
 # Configurar o log para imprimir no console
 logging.basicConfig(
@@ -20,6 +21,15 @@ import pandas as pd
 
 from pathlib import Path
 from matplotlib.ticker import FuncFormatter
+
+matplotlib.rcParams.update({
+    "font.size": 10,
+    "axes.labelsize": 10,
+    "axes.titlesize": 10,
+    "xtick.labelsize": 9,
+    "ytick.labelsize": 9,
+    "legend.fontsize": 9,
+})
 
 base_dir = Path(__file__).resolve().parent.parent 
 
@@ -118,12 +128,13 @@ def plot_aerial_results(results):
     marker_style = dict(marker="o", linestyle="None", markersize=6,
                         markerfacecolor="none", markeredgewidth=1.5)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.2), dpi=150)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4), dpi=150)
 
     # --- Subplot T ---
-    ax1.plot(rpm_fit, T_fit, color=line_color, linewidth=2.0, label="BEMT - adjusted curve")
-    ax1.plot(rpm, T, color=line_color, **marker_style, label="BEMT - experiments")
-    ax1.plot(rpm_fit, horn_T, color=reference_color, linestyle="--", linewidth=2.0, label="Horn, 2019")
+    h1, = ax1.plot(rpm_fit, T_fit, color=line_color, linewidth=2.0, label="BEMT - adjusted curve")
+    h2, = ax1.plot(rpm, T, color=line_color, **marker_style, label="BEMT - experiments")
+    h3, = ax1.plot(rpm_fit, horn_T, color=reference_color, linestyle="--", linewidth=2.0, label="Horn, 2019")
+
     ax1.set_xlabel(r"$\omega$ [rpm]")
     ax1.set_xlim(1000, 6000)
     ax1.set_ylabel(r"$T$ [N]")
@@ -133,17 +144,16 @@ def plot_aerial_results(results):
     ax1.text(
         0.02, 0.98, txt_T,
         transform=ax1.transAxes, ha="left", va="top",
-        fontsize=9,
+        fontsize=8,
         bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.85)
     )
-    
     ax1.grid(True, which="both", alpha=0.25)
-    ax1.legend(frameon=True, fontsize=9)
-
-    # --- Subplot Q ---
+    
+    # --- Subplot P ---
     ax2.plot(rpm_fit, P_fit, color=line_color, linewidth=2.0, label="BEMT - adjusted curve")
     ax2.plot(rpm, P, color=line_color, **marker_style, label="BEMT - experiments")
     ax2.plot(rpm_fit, horn_P, color=reference_color, linestyle="--", linewidth=2.0, label="Horn, 2019")
+
     ax2.set_xlabel(r"$\omega$ [rpm]")
     ax2.set_xlim(1000, 6000)
     ax2.set_ylabel(r"$P$ [W]")
@@ -152,116 +162,121 @@ def plot_aerial_results(results):
     ax2.text(
         0.02, 0.98, txt_P,
         transform=ax2.transAxes, ha="left", va="top",
-        fontsize=9,
+        fontsize=8,
         bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.85)
     )
-
     ax2.grid(True, which="both", alpha=0.25)
-    ax2.legend(frameon=True, fontsize=9)
 
-    plt.tight_layout()
+    # --- Legenda ÚNICA (acima dos dois subplots, mas dentro da figura) ---
+    fig.legend(
+        [h1, h2, h3],
+        ["BEMT - adjusted curve", "BEMT - experiments", "Horn, 2019"],
+        loc="upper center",
+        ncol=3,
+        frameon=True,
+        bbox_to_anchor=(0.5, 0.98)  # <-- dentro do canvas
+    )
+
+    # Reserva espaço no topo para a legenda
+    fig.subplots_adjust(top=0.86)   # <-- baixa os subplots e abre espaço
+
     plt.show()
 
 def plot_aquatic_results(results):
-    # Converte para arrays
-    rpm       = np.array([r[0] for r in results], dtype=float)
-    T_single  = np.array([r[1] for r in results], dtype=float)
-    Q_single  = np.array([r[2] for r in results], dtype=float)  # N·m
-    P_single  = np.array([r[3] for r in results], dtype=float)  # W
+    # results:
+    # (rpm, T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion, QI)
+
+    rpm  = np.array([r[0] for r in results], dtype=float)
+
+    T1   = np.array([r[1] for r in results], dtype=float)
+    Q1   = np.array([r[2] for r in results], dtype=float)
+    P1   = np.array([r[3] for r in results], dtype=float)
+
+    cav  = np.array([r[9] for r in results], dtype=float)
 
     # dobra para 2 hélices em paralelo
-    T = 2.0 * T_single
-    Q = 2.0 * Q_single
-    P = 2.0 * P_single
+    T = 2.0 * T1
+    Q = 2.0 * Q1
+    P = 2.0 * P1
 
     rpm_fit = np.linspace(250, 750, 300)
 
-    # Horn,2019 data
-    # df_horn_T = pd.read_csv(base_dir / "analysis" / "horn2019" / "propeller_10_data_T.csv")
-    # df_horn_P = pd.read_csv(base_dir / "analysis" / "horn2019" / "propeller_10_data_P.csv")
-
-    # horn_T = np.poly1d(np.polyfit(df_horn_T['rpm'].to_numpy(), df_horn_T['T'].to_numpy(), 3))(rpm_fit)
-    # horn_P = np.poly1d(np.polyfit(df_horn_P['rpm'].to_numpy(), df_horn_P['P'].to_numpy(), 3))(rpm_fit)
-
-    # Curvas suavizadas (polinômio grau 3)
+    # Curvas suavizadas (polinômio grau 3) para T e P
     T_fit = np.poly1d(np.polyfit(rpm, T, 3))(rpm_fit)
-    Q_fit = np.poly1d(np.polyfit(rpm, Q, 3))(rpm_fit)
     P_fit = np.poly1d(np.polyfit(rpm, P, 3))(rpm_fit)
 
-    # --- diferenças ponto a ponto (BEMT - Horn) ---
-    # mask = (rpm_fit >= 1000) & (rpm_fit <= 6000)
-
-    # T_ref, T_hat = horn_T[mask], T_fit[mask]
-    # P_ref, P_hat = horn_P[mask], P_fit[mask]
-
-    # eT = T_hat - T_ref
-    # eP = P_hat - P_ref
-
-    # MAE_T  = np.mean(np.abs(eT))
-    # RMSE_T = np.sqrt(np.mean(eT**2))
-    # MAE_P  = np.mean(np.abs(eP))
-    # RMSE_P = np.sqrt(np.mean(eP**2))
-
-    # # Normalização opcional
-    # NRMSE_T = RMSE_T / (T_ref.max() - T_ref.min())
-    # NRMSE_P = RMSE_P / (P_ref.max() - P_ref.min())
-
-    # # Texto compacto para cada subplot
-    # txt_T = f"MAE = {MAE_T:.2f} N\nRMSE = {RMSE_T:.2f} N\nNRMSE = {NRMSE_T*100:.1f}%"
-    # txt_P = f"MAE = {MAE_P:.2f} W\nRMSE = {RMSE_P:.2f} W\nNRMSE = {NRMSE_P*100:.1f}%"
+    # Cavitação: interpolação linear (evita overshoot e valores >1 ou <0)
+    cav_fit = np.interp(rpm_fit, rpm, cav)
 
     # Formatador para eixo x com separador de milhar "1,000"
     kfmt = FuncFormatter(lambda x, pos: f"{int(x):,}")
 
-    # Cores/estilos (ajuste como quiser)
-    line_color = "#c00000"  # vermelho (T)
-    reference_color = "#2B9E44"
-    marker_style = dict(marker="o", linestyle="None", markersize=6,
-                        markerfacecolor="none", markeredgewidth=1.5)
+    # Estilo
+    line_color = "#c00000"
+    marker_style = dict(
+        marker="o", linestyle="None", markersize=6,
+        markerfacecolor="none", markeredgewidth=1.5
+    )
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.2), dpi=150)
+    # =========================================================
+    # FIGURA 1: T e P (lado a lado, estilo do aéreo)
+    # =========================================================
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4), dpi=150)
 
-    # --- Subplot T ---
-    ax1.plot(rpm_fit, T_fit, color=line_color, linewidth=2.0, label="BEMT - adjusted curve")
-    ax1.plot(rpm, T, color=line_color, **marker_style, label="BEMT - experiments")
-    # ax1.plot(rpm_fit, horn_T, color=reference_color, linestyle="--", linewidth=2.0, label="Horn, 2019")
+    # --- T ---
+    h1, = ax1.plot(rpm_fit, T_fit, color=line_color, linewidth=2.0, label="BEMT - adjusted curve")
+    h2, = ax1.plot(rpm, T, color=line_color, **marker_style, label="BEMT - experiments")
     ax1.set_xlabel(r"$\omega$ [rpm]")
     ax1.set_xlim(250, 750)
     ax1.set_ylabel(r"$T$ [N]")
-    ax1.set_ylim(0, 150)
     ax1.xaxis.set_major_formatter(kfmt)
-
-    # ax1.text(
-    #     0.02, 0.98, txt_T,
-    #     transform=ax1.transAxes, ha="left", va="top",
-    #     fontsize=9,
-    #     bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.85)
-    # )
-    
     ax1.grid(True, which="both", alpha=0.25)
-    ax1.legend(frameon=True, fontsize=9)
 
-    # --- Subplot Q ---
+    # --- P ---
     ax2.plot(rpm_fit, P_fit, color=line_color, linewidth=2.0, label="BEMT - adjusted curve")
     ax2.plot(rpm, P, color=line_color, **marker_style, label="BEMT - experiments")
-    # ax2.plot(rpm_fit, horn_P, color=reference_color, linestyle="--", linewidth=2.0, label="Horn, 2019")
     ax2.set_xlabel(r"$\omega$ [rpm]")
     ax2.set_xlim(250, 750)
     ax2.set_ylabel(r"$P$ [W]")
     ax2.xaxis.set_major_formatter(kfmt)
-
-    # ax2.text(
-    #     0.02, 0.98, txt_P,
-    #     transform=ax2.transAxes, ha="left", va="top",
-    #     fontsize=9,
-    #     bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.85)
-    # )
-
     ax2.grid(True, which="both", alpha=0.25)
-    ax2.legend(frameon=True, fontsize=9)
+
+    # Legenda única no topo (dentro do canvas)
+    fig.legend(
+        [h1, h2],
+        ["BEMT - adjusted curve", "BEMT - experiments"],
+        loc="upper center",
+        ncol=2,
+        frameon=True,
+        bbox_to_anchor=(0.5, 0.98)
+    )
+
+    # Reserva espaço para a legenda e arruma layout
+    fig.subplots_adjust(top=0.88, wspace=0.18)
+
+    plt.show()
+
+    # =========================================================
+    # FIGURA 2: Cavitação (apenas cavitação)
+    # =========================================================
+    fig2, axc = plt.subplots(1, 1, figsize=(4, 3.2), dpi=150)
+
+    axc.plot(rpm_fit, cav_fit, color="black", linewidth=2.0, label="Cavitating proportion")
+    axc.plot(rpm, cav, color="black", marker="o", linestyle="None",
+             markersize=5, markerfacecolor="none", markeredgewidth=1.2)
+
+    axc.set_xlabel(r"$\omega$ [rpm]")
+    axc.set_xlim(250, 750)
+    axc.set_ylabel("Cavitation [-]")
+    axc.set_ylim(0.0, 1.0)
+    axc.xaxis.set_major_formatter(kfmt)
+    axc.grid(True, which="both", alpha=0.25)
+
+    axc.legend(frameon=True, loc="upper left")
 
     plt.tight_layout()
     plt.show()
+
 
 if __name__ == "__main__":
 
@@ -325,22 +340,22 @@ if __name__ == "__main__":
 
     # ------- Evaluate in air ------------------------------
 
-    list_of_scenarios = [
-        Scenario(rpm=1000.0, v_inf=0.0),
-        Scenario(rpm=1500.0, v_inf=0.0),
-        Scenario(rpm=2000.0, v_inf=0.0),
-        Scenario(rpm=2500.0, v_inf=0.0),
-        Scenario(rpm=3000.0, v_inf=0.0),
-        Scenario(rpm=3500.0, v_inf=0.0),
-        Scenario(rpm=4000.0, v_inf=0.0),
-        Scenario(rpm=4500.0, v_inf=0.0),
-        Scenario(rpm=5000.0, v_inf=0.0),
-        Scenario(rpm=5500.0, v_inf=0.0)
-    ]
+    # list_of_scenarios = [
+    #     Scenario(rpm=1000.0, v_inf=0.0),
+    #     Scenario(rpm=1500.0, v_inf=0.0),
+    #     Scenario(rpm=2000.0, v_inf=0.0),
+    #     Scenario(rpm=2500.0, v_inf=0.0),
+    #     Scenario(rpm=3000.0, v_inf=0.0),
+    #     Scenario(rpm=3500.0, v_inf=0.0),
+    #     Scenario(rpm=4000.0, v_inf=0.0),
+    #     Scenario(rpm=4500.0, v_inf=0.0),
+    #     Scenario(rpm=5000.0, v_inf=0.0),
+    #     Scenario(rpm=5500.0, v_inf=0.0)
+    # ]
     
-    aerial_results = aerial_bemt_evaluations(rotor, list_of_scenarios)
+    # aerial_results = aerial_bemt_evaluations(rotor, list_of_scenarios)
 
-    plot_aerial_results(aerial_results)
+    # plot_aerial_results(aerial_results)
 
     # ---------------------------------------------------
 
