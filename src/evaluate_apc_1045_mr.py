@@ -82,6 +82,12 @@ def plot_aerial_results(results):
     T = 2.0 * T_single
     Q = 2.0 * Q_single
     P = 2.0 * P_single
+    
+    # Adiciona ponto (0,0) para melhor ajuste polinomial
+    rpm = np.concatenate(([0.0], rpm))
+    T = np.concatenate(([0.0], T))
+    Q = np.concatenate(([0.0], Q))
+    P = np.concatenate(([0.0], P))
 
     rpm_fit = np.linspace(0, 6000, 300)
 
@@ -186,13 +192,13 @@ def plot_aquatic_results(results):
     # results:
     # (rpm, T, Q, P, J, CT, CQ, CP, eta, cavitating_proportion, QI)
 
-    rpm  = np.array([r[0] for r in results], dtype=float)
+    rpm = np.array([r[0] for r in results], dtype=float)
 
-    T1   = np.array([r[1] for r in results], dtype=float)
-    Q1   = np.array([r[2] for r in results], dtype=float)
-    P1   = np.array([r[3] for r in results], dtype=float)
+    T1  = np.array([r[1] for r in results], dtype=float)
+    Q1  = np.array([r[2] for r in results], dtype=float)
+    P1  = np.array([r[3] for r in results], dtype=float)
 
-    cav  = np.array([r[9] for r in results], dtype=float)
+    cav = np.array([r[9] for r in results], dtype=float)
 
     # dobra para 2 hélices em paralelo
     T = 2.0 * T1
@@ -340,22 +346,22 @@ if __name__ == "__main__":
 
     # ------- Evaluate in air ------------------------------
 
-    # list_of_scenarios = [
-    #     Scenario(rpm=1000.0, v_inf=0.0),
-    #     Scenario(rpm=1500.0, v_inf=0.0),
-    #     Scenario(rpm=2000.0, v_inf=0.0),
-    #     Scenario(rpm=2500.0, v_inf=0.0),
-    #     Scenario(rpm=3000.0, v_inf=0.0),
-    #     Scenario(rpm=3500.0, v_inf=0.0),
-    #     Scenario(rpm=4000.0, v_inf=0.0),
-    #     Scenario(rpm=4500.0, v_inf=0.0),
-    #     Scenario(rpm=5000.0, v_inf=0.0),
-    #     Scenario(rpm=5500.0, v_inf=0.0)
-    # ]
+    list_of_scenarios = [
+        Scenario(rpm=1000.0, v_inf=0.0),
+        Scenario(rpm=1500.0, v_inf=0.0),
+        Scenario(rpm=2000.0, v_inf=0.0),
+        Scenario(rpm=2500.0, v_inf=0.0),
+        Scenario(rpm=3000.0, v_inf=0.0),
+        Scenario(rpm=3500.0, v_inf=0.0),
+        Scenario(rpm=4000.0, v_inf=0.0),
+        Scenario(rpm=4500.0, v_inf=0.0),
+        Scenario(rpm=5000.0, v_inf=0.0),
+        Scenario(rpm=5500.0, v_inf=0.0)
+    ]
     
-    # aerial_results = aerial_bemt_evaluations(rotor, list_of_scenarios)
+    aerial_results = aerial_bemt_evaluations(rotor, list_of_scenarios)
 
-    # plot_aerial_results(aerial_results)
+    plot_aerial_results(aerial_results)
 
     # ---------------------------------------------------
 
@@ -363,18 +369,18 @@ if __name__ == "__main__":
 
     # ------------ Evaluate in water --------------------
     
-    list_of_scenarios_water = [
-        Scenario(rpm=300.0, v_inf=0.0),
-        Scenario(rpm=350.0, v_inf=0.0),
-        Scenario(rpm=400.0, v_inf=0.0),
-        Scenario(rpm=450.0, v_inf=0.0),
-        Scenario(rpm=500.0, v_inf=0.0),
-        Scenario(rpm=550.0, v_inf=0.0),
-        Scenario(rpm=600.0, v_inf=0.0),
-        Scenario(rpm=650.0, v_inf=0.0),
-        Scenario(rpm=700.0, v_inf=0.0)
-    ]
+    # list_of_scenarios_water = [
+    #     Scenario(rpm=300.0, v_inf=0.0),
+    #     Scenario(rpm=350.0, v_inf=0.0),
+    #     Scenario(rpm=400.0, v_inf=0.0),
+    #     Scenario(rpm=450.0, v_inf=0.0),
+    #     Scenario(rpm=500.0, v_inf=0.0),
+    #     Scenario(rpm=550.0, v_inf=0.0),
+    #     Scenario(rpm=600.0, v_inf=0.0),
+    #     Scenario(rpm=650.0, v_inf=0.0),
+    #     Scenario(rpm=700.0, v_inf=0.0)
+    # ]
 
-    water_results = aquatic_bemt_evaluations(rotor, list_of_scenarios_water)
+    # water_results = aquatic_bemt_evaluations(rotor, list_of_scenarios_water)
 
-    plot_aquatic_results(water_results)
+    # plot_aquatic_results(water_results)
