@@ -68,8 +68,8 @@ def main():
             "run_id": i,
             "elitism_fraction": 0.22,
             "mutation_rate": 0.49,
-            "pop_size": 200,
-            "generations": 100,
+            "pop_size": 500,
+            "generations": 150,
             "seed": i * 100
         })
 

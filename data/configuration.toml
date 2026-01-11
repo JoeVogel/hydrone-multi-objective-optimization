@@ -10,8 +10,8 @@ voltage = 14.8
 max_current = 20
 
 [nsga2]
-pop_size = 50
-generations = 200
+pop_size = 500
+generations = 150
 mutation_rate = 0.49
 elite_fraction = 0.22
 seed = 42
