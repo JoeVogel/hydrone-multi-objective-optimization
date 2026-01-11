@@ -67,7 +67,7 @@ goto parse
 :afterparse
 
 REM Nada de echo aqui! Se quiser debugar, joga pra arquivo:
-REM echo elitism=%ELITISM% mutation=%MUTATION% pop=%POPSIZE% gen=%GENERATIONS% >> "%THIS_DIR%runner_debug.log"
+REM echo elitism=%ELITISM% mutation=%MUTATION% pop=%POPSIZE% gen=%GENERATIONS%  >> "%THIS_DIR%runner_debug.log"
 
 REM ==========================================
 REM 4) Rodar main.py -> JSON -> compute_hv_direct.py
@@ -80,6 +80,7 @@ python main.py ^
     --mutation_rate %MUTATION% ^
     --pop_size %POPSIZE% ^
     --generations %GENERATIONS% ^
+    --write_log_file False ^
     2> NUL | python "%THIS_DIR%compute_hv_direct.py"
 
 endlocal
