@@ -783,6 +783,9 @@ class NSGAII:
         """
         Executes the NSGA-II optimization process and returns Pareto fronts.
         """
+
+        df_bests_by_generation = pd.DataFrame(columns=["generation", "best_aerial_fitness", "best_aquatic_fitness"])
+
         population = self._initialize_population()
         for generation in range(1, self.maximum_generations + 1):
             logger.info(f"Generation {generation}/{self.maximum_generations}")
@@ -817,6 +820,12 @@ class NSGAII:
                         aerial=aerial,
                         aquatic=aquatic
                     )
+                
+            df_bests_by_generation.add_row({
+                "generation": generation,
+                "best_aerial_fitness": max(ind.aerial_fitness for ind in population if ind.aerial_fitness is not None),
+                "best_aquatic_fitness": max(ind.aquatic_fitness for ind in population if ind.aquatic_fitness is not None)
+            })
 
             # Perform non-dominated sorting
             fronts = self._fast_non_dominated_sort(population)
@@ -833,8 +842,11 @@ class NSGAII:
             # Selection, crossover, and mutation
             population = self._create_next_generation(population, fronts)
 
+        df_bests_by_generation.to_csv(self.run_dir / "bests_by_generation.csv", index=False)
+        logger.info(f"[NSGA-II] Bests by generation saved in {self.run_dir / 'bests_by_generation.csv'}")
+
         if fronts and len(fronts[0]) > 0:
             self._write_pareto_front_csv(fronts[0])
-            logger.info(f"[NSGA-II] Pareto front salvo em {self.front_csv_path}")
+            logger.info(f"[NSGA-II] Pareto front saved in {self.front_csv_path}")
 
         return fronts           

@@ -5,7 +5,7 @@ import argparse
 
 # Configurar o log para imprimir no console
 logging.basicConfig(
-    level=logging.CRITICAL,  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    level=logging.INFO,  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",  # Formato da saída
 )
 
