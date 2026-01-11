@@ -12,7 +12,7 @@ from pathlib import Path
 
 from evaluation.evaluation_method import EvaluationMethod
 from .individual                  import Individual
-from rotor                        import Rotor
+from rotor                        import Rotor, radial_solidity_profile
 
 logger = logging.getLogger(__name__)
 
@@ -658,11 +658,40 @@ class NSGAII:
 
         return penalty
 
-    def _compute_aerial_fitness(self, raw_result, aQ_penalty):
+    def _solidity_penalty(self, rotor: Rotor):
         """
-        Computes aerial fitness based on efficiency and torque penalty.
+        Calculates a penalty based on the radial solidity profile.
+        The penalty increases when the tip solidity is significantly higher than the mid-span solidity.
+        This is to avoid designs with excessive tip solidity which can lead to inefficiencies.
         """
-        fitness = raw_result * (1.0 - aQ_penalty)
+
+        _, sig_mid, sig_tip = radial_solidity_profile(rotor)
+
+        ALPHA   = 0.8  # tip solidity percentage of mid-span solidity where penalty starts
+        W_SIGMA = 0.4  # weight of solidity penalty
+
+        if sig_mid > 0:
+            ratio = sig_tip / sig_mid
+        else:
+            return 0.0
+
+        if ratio <= ALPHA:
+            return 0.0
+        
+        # Smooth linear ramp from alpha..1 -> 0..1 (clamped)
+        penalty = (ratio - ALPHA) / (1.0 - ALPHA)
+        penalty = max(0.0, min(1.0, penalty))
+
+        # Apply weight
+        penalty *= W_SIGMA
+
+        return penalty
+
+    def _compute_aerial_fitness(self, raw_result, aQ_penalty, sigma_penalty):
+        """
+        Computes aerial fitness based on efficiency, torque penalty, and solidity penalty.
+        """
+        fitness = raw_result * (1.0 - aQ_penalty) * (1.0 - sigma_penalty)
         return fitness
     
     def _compute_aquatic_fitness(self, raw_result, cavitation_penalty, wQ_penalty):
@@ -703,14 +732,16 @@ class NSGAII:
                     aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
                     
                     aQ_penalty = self._torque_penalty(aQ, self.aerial_Q_max)
+                    sigma_penalty = self._solidity_penalty(rotor)
 
                     if (aJ == 0):
                         # Use Figure of Merit in hover
-                        individual.aerial_fitness = self._compute_aerial_fitness(FM, aQ_penalty)
+                        a_fitness = FM
                     else:
                         # Use efficiency otherwise
-                        individual.aerial_fitness = self._compute_aerial_fitness(aEta, aQ_penalty)  
+                        a_fitness = aEta
 
+                    individual.aerial_fitness = self._compute_aerial_fitness(a_fitness, aQ_penalty, sigma_penalty)
                     individual.aerial_fitness = self._safe_real(individual.aerial_fitness) # se ainda estiver gerando um complex type
 
                     aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "Q_penalty": aQ_penalty}
@@ -729,11 +760,12 @@ class NSGAII:
 
                     if (wJ == 0):
                         # Use Quality Index as fitness in bollard pull
-                        individual.aquatic_fitness = self._compute_aquatic_fitness(QI, cavitating_proportion, wQ_penalty) 
+                        w_fitness = QI 
                     else:
                         # Use efficiency otherwise
-                        individual.aquatic_fitness = self._compute_aquatic_fitness(wEta, cavitating_proportion, wQ_penalty)
+                        w_fitness = wEta
 
+                    individual.aquatic_fitness = self._compute_aquatic_fitness(w_fitness, cavitating_proportion, wQ_penalty)
                     individual.aquatic_fitness = self._safe_real(individual.aquatic_fitness) # se ainda estiver gerando um complex type
 
                     aquatic = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "Q_penalty": wQ_penalty}

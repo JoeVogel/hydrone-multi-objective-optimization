@@ -9,6 +9,30 @@ from configparser import NoOptionError
 from math import radians, degrees, sqrt, cos, sin, atan2, atan, pi, acos, exp
 from airfoil import load_airfoil
 
+def radial_solidity_profile(rotor):
+    """
+    Calculate the average solidity in root, mid, and tip regions of the rotor.
+    :param Rotor rotor: Rotor object
+    :return: Tuple of average solidity (sigma) in root, mid, and tip regions
+    """
+    sig_root = []
+    sig_mid  = []
+    sig_tip  = []
+
+    for sec in rotor.sections:
+        rR = sec.r / rotor.radius
+
+        if rR < 0.4:
+            sig_root.append(sec.sigma)
+        elif rR < 0.7:
+            sig_mid.append(sec.sigma)
+        else:
+            sig_tip.append(sec.sigma)
+
+    def avg(lst):
+        return sum(lst)/len(lst) if lst else 0.0
+
+    return avg(sig_root), avg(sig_mid), avg(sig_tip)
 
 class Rotor: 
     """
