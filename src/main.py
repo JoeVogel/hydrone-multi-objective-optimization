@@ -118,7 +118,7 @@ if __name__ == "__main__":
     nsga_gener      = configs["nsga2"].get("generations", 60)
     nsga_seed       = configs["nsga2"].get("seed", 42)
     
-    # Overrides pelo irace
+    # Overrides from CLI arguments
     if args.elitism_fraction is not None:
         nsga_elite = args.elitism_fraction
     if args.mutation_rate is not None:
