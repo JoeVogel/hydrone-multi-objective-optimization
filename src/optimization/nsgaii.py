@@ -59,6 +59,8 @@ class NSGAII:
         if self._write_log_file:
             self._init_run_outputs()
 
+        logger.info(f"[NSGA-II] Population size: {self.population_size}, Generations: {self.maximum_generations}, Seed: {self.seed}")
+
     def _init_run_outputs(self):
         """Creates data/results/<datetime> and initializes evaluations.csv with header."""
         base_dir = Path(__file__).resolve().parent
