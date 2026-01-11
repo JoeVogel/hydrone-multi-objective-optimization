@@ -26,7 +26,7 @@ https://ieeexplore.ieee.org/abstract/document/996017?casa_token=dDGNqrFAX2YAAAAA
 # https://github.com/smkalami/nsga2-in-python/blob/main/nsga2.py
 
 class NSGAII:
-    def __init__(self, aerial_evaluation_method: EvaluationMethod, aquatic_evaluation_method: EvaluationMethod, problem_configuration, motor_data, nsga_configuration):
+    def __init__(self, aerial_evaluation_method: EvaluationMethod, aquatic_evaluation_method: EvaluationMethod, problem_configuration, motor_data, nsga_configuration, write_log_file=True):
         
         # TODO: adicionar checks nas configurações
         
@@ -54,7 +54,10 @@ class NSGAII:
 
         self.hub_diameter = self.hub_radius * 2 
 
-        self._init_run_outputs()
+        self._write_log_file = write_log_file
+
+        if self._write_log_file:
+            self._init_run_outputs()
 
     def _init_run_outputs(self):
         """Creates data/results/<datetime> and initializes evaluations.csv with header."""
@@ -78,7 +81,7 @@ class NSGAII:
             # aerial metrics
             "aerial_T","aerial_Q","aerial_P","aerial_J","aerial_CT","aerial_CQ","aerial_CP","aerial_eta", "FM", "aerial_fitness", "aerial_Q_penalty",
             # water metrics
-            "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta", "cavitating_proportion", "QI","aquatic_fitness", "cavitation_penalty", "aquatic_Q_penalty",
+            "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta", "cavitating_proportion", "QI","aquatic_fitness", "cavitation_penalty", "aquatic_Q_penalty", "aquatic_sigma_penalty"
         ]
 
         with self.eval_csv_path.open("w", newline="") as f:
@@ -135,6 +138,7 @@ class NSGAII:
             "aerial_eta": "" if aerial  is None else aerial.get("eta",""),
             "FM": "" if aerial  is None else aerial.get("FM",""),
             "aerial_Q_penalty": "" if aerial  is None else aerial.get("Q_penalty",""),
+            "aerial_sigma_penalty": "" if aerial  is None else aerial.get("sigma_penalty",""),
             "aerial_fitness": getattr(individual, "aerial_fitness", ""),
 
             "aquatic_T":   "" if aquatic is None else aquatic.get("T",""),
@@ -180,14 +184,29 @@ class NSGAII:
 
             aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
             aQ_penalty = self._torque_penalty(aQ, self.aerial_Q_max)
+            sigma_penalty = self._solidity_penalty(rotor)
 
-            a = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "Q_penalty": aQ_penalty}
+            if (aJ > 0):
+                a_fitness = aEta
+            else:
+                a_fitness = FM
+            
+            a_fitness = self._compute_aerial_fitness(a_fitness, aQ_penalty, sigma_penalty)
+
+            a = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "aerial_fitness": a_fitness, "Q_penalty": aQ_penalty, "sigma_penalty": sigma_penalty}
 
             wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
             cavitation_penalty = self._cavitation_penalty(cavitating_proportion)
             wQ_penalty = self._torque_penalty(wQ, self.aquatic_Q_max)
 
-            w = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "Q_penalty": wQ_penalty}
+            if (wJ > 0):
+                w_fitness = wEta
+            else:
+                w_fitness = QI
+
+            w_fitness = self._compute_aquatic_fitness(w_fitness, cavitation_penalty, wQ_penalty)
+
+            w = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "Q_penalty": wQ_penalty, "aquatic_fitness": w_fitness}
 
             self._append_eval_row(
                 generation="",  # último gen
@@ -744,7 +763,7 @@ class NSGAII:
                     individual.aerial_fitness = self._compute_aerial_fitness(a_fitness, aQ_penalty, sigma_penalty)
                     individual.aerial_fitness = self._safe_real(individual.aerial_fitness) # se ainda estiver gerando um complex type
 
-                    aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "Q_penalty": aQ_penalty}
+                    aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "Q_penalty": aQ_penalty, "sigma_penalty": sigma_penalty}
                 except Exception as e:
                     logger.warning(f"[NSGA] Aerial eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
                     individual.aerial_fitness = 0.0  # penalization
@@ -774,13 +793,14 @@ class NSGAII:
                     individual.aquatic_fitness = -1e6  # penalization
                     aquatic = None
                 
-                self._append_eval_row(
-                    generation=generation,
-                    pop_index=idx,
-                    individual=individual,
-                    aerial=aerial,
-                    aquatic=aquatic
-                )
+                if (self._write_log_file):
+                    self._append_eval_row(
+                        generation=generation,
+                        pop_index=idx,
+                        individual=individual,
+                        aerial=aerial,
+                        aquatic=aquatic
+                    )
 
             # Perform non-dominated sorting
             fronts = self._fast_non_dominated_sort(population)
@@ -796,8 +816,8 @@ class NSGAII:
 
             # Selection, crossover, and mutation
             population = self._create_next_generation(population, fronts)
-        
-        if fronts and len(fronts[0]) > 0:
+
+        if fronts and len(fronts[0]) > 0 and self._write_log_file:
             self._write_pareto_front_csv(fronts[0])
             logger.info(f"[NSGA-II] Pareto front salvo em {self.front_csv_path}")
 

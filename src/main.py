@@ -86,6 +86,7 @@ if __name__ == "__main__":
     parser.add_argument("--generations", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--plot", type=bool, default=False)
+    parser.add_argument("--write_log_file", type=bool, default=True)
     args = parser.parse_args()
 
     # Load configurations
@@ -128,7 +129,9 @@ if __name__ == "__main__":
         nsga_gener = args.generations
     if args.seed is not None:
         nsga_seed = args.seed
-    
+
+    write_log_file = args.write_log_file
+
     nsga_config = {
         "population_size": nsga_popsize,
         "maximum_generations": nsga_gener,
@@ -161,7 +164,7 @@ if __name__ == "__main__":
         scenario=Scenario(rpm=aquatic_rpm, v_inf=0.0)
     )
     
-    optimizer = NSGAII(aerial_evaluator, aquatic_evaluator, problem_config, motor_data, nsga_config)
+    optimizer = NSGAII(aerial_evaluator, aquatic_evaluator, problem_config, motor_data, nsga_config, write_log_file)
     
     pareto_fronts = optimizer.run()
 
