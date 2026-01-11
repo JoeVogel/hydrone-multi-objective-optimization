@@ -85,8 +85,22 @@ if __name__ == "__main__":
     parser.add_argument("--pop_size", type=int, default=None)
     parser.add_argument("--generations", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--plot", type=bool, default=False)
-    parser.add_argument("--write_log_file", type=bool, default=True)
+    parser.add_argument(
+        "--no_plot",
+        action="store_false",
+        dest="plot",
+        help="Disable plotting of Pareto fronts"
+    )
+    parser.set_defaults(plot=True)
+
+    parser.add_argument(
+        "--no_write_log_file",
+        action="store_false",
+        dest="write_log_file",
+        help="Disable writing log file"
+    )
+    parser.set_defaults(write_log_file=True)
+
     args = parser.parse_args()
 
     # Load configurations

@@ -79,9 +79,9 @@ class NSGAII:
             # Scenario (for traceability)
             "aerial_rpm", "aerial_v_inf", "aquatic_rpm", "aquatic_v_inf",
             # aerial metrics
-            "aerial_T","aerial_Q","aerial_P","aerial_J","aerial_CT","aerial_CQ","aerial_CP","aerial_eta", "FM", "aerial_fitness", "aerial_Q_penalty",
+            "aerial_T","aerial_Q","aerial_P","aerial_J","aerial_CT","aerial_CQ","aerial_CP","aerial_eta", "FM", "aerial_fitness", "aerial_Q_penalty", "aerial_sigma_penalty",
             # water metrics
-            "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta", "cavitating_proportion", "QI","aquatic_fitness", "cavitation_penalty", "aquatic_Q_penalty", "aquatic_sigma_penalty"
+            "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta", "cavitating_proportion", "QI","aquatic_fitness", "cavitation_penalty", "aquatic_Q_penalty",
         ]
 
         with self.eval_csv_path.open("w", newline="") as f:

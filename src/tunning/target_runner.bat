@@ -80,7 +80,8 @@ python main.py ^
     --mutation_rate %MUTATION% ^
     --pop_size %POPSIZE% ^
     --generations %GENERATIONS% ^
-    --write_log_file False ^
+    --no_write_log_file ^
+    --no_plot ^
     2> NUL | python "%THIS_DIR%compute_hv_direct.py"
 
 endlocal
