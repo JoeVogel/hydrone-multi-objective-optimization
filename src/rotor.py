@@ -19,8 +19,12 @@ def radial_solidity_profile(rotor):
     sig_mid  = []
     sig_tip  = []
 
+    R = rotor.blade_radius
+    if R <= 0:
+        return 0.0, 0.0, 0.0
+
     for sec in rotor.sections:
-        rR = sec.r / rotor.radius
+        rR = sec.radius / R
 
         if rR < 0.4:
             sig_root.append(sec.sigma)

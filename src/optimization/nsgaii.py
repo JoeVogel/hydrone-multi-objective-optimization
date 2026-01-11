@@ -56,8 +56,7 @@ class NSGAII:
 
         self._write_log_file = write_log_file
 
-        if self._write_log_file:
-            self._init_run_outputs()
+        self._init_run_outputs()
 
         logger.info(f"[NSGA-II] Population size: {self.population_size}, Generations: {self.maximum_generations}, Seed: {self.seed}")
 
@@ -86,9 +85,10 @@ class NSGAII:
             "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta", "cavitating_proportion", "QI","aquatic_fitness", "cavitation_penalty", "aquatic_Q_penalty",
         ]
 
-        with self.eval_csv_path.open("w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=self._eval_fields)
-            writer.writeheader()
+        if self._write_log_file:
+            with self.eval_csv_path.open("w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=self._eval_fields)
+                writer.writeheader()
 
         logger.info(f"[NSGA-II] Result dir: {self.run_dir}")
 
@@ -725,6 +725,60 @@ class NSGAII:
         fitness = raw_result * combined_factor
         return fitness
 
+    def _aerial_eval(self, rotor, individual):
+        """
+        Aerial evaluation for a given rotor and individual.
+        """
+        try:
+            aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
+            
+            aQ_penalty = self._torque_penalty(aQ, self.aerial_Q_max)
+            sigma_penalty = self._solidity_penalty(rotor)
+
+            if (aJ == 0):
+                # Use Figure of Merit in hover
+                a_fitness = FM
+            else:
+                # Use efficiency otherwise
+                a_fitness = aEta
+
+            individual.aerial_fitness = self._compute_aerial_fitness(a_fitness, aQ_penalty, sigma_penalty)
+            individual.aerial_fitness = self._safe_real(individual.aerial_fitness) # se ainda estiver gerando um complex type
+
+            return {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "Q_penalty": aQ_penalty, "sigma_penalty": sigma_penalty}
+        except Exception as e:
+            logger.warning(f"[NSGA] Aerial eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
+            individual.aerial_fitness = 0.0  # penalization
+            return None
+
+    def _aquatic_eval(self, rotor, individual):
+        """
+        Aquatic evaluation for a given rotor and individual.
+        """
+        try:
+            wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
+            
+            individual.cavitating_proportion = cavitating_proportion
+        
+            cavitation_penalty  = self._cavitation_penalty(cavitating_proportion)
+            wQ_penalty          = self._torque_penalty(wQ, self.aquatic_Q_max)
+
+            if (wJ == 0):
+                # Use Quality Index as fitness in bollard pull
+                w_fitness = QI 
+            else:
+                # Use efficiency otherwise
+                w_fitness = wEta
+
+            individual.aquatic_fitness = self._compute_aquatic_fitness(w_fitness, cavitating_proportion, wQ_penalty)
+            individual.aquatic_fitness = self._safe_real(individual.aquatic_fitness) # se ainda estiver gerando um complex type
+
+            return {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "Q_penalty": wQ_penalty}
+        except Exception as e:
+            logger.warning(f"[NSGA] Aquatic eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
+            individual.aquatic_fitness = -1e6  # penalization
+            return None
+
     def run(self):
         """
         Executes the NSGA-II optimization process and returns Pareto fronts.
@@ -736,6 +790,12 @@ class NSGAII:
             # Evaluate population
             for idx, individual in enumerate(population):
 
+                logger.info(
+                    f"[NSGA] Evaluating individual {idx+1}/{len(population)} Gen {generation}/{self.maximum_generations} "
+                    f"(B={individual.B}, "
+                    f"unique_foils={len(set(individual.foil_list))})"
+                )
+
                 rotor = Rotor(
                     n_blades=individual.B,
                     diameter=individual.D,
@@ -746,55 +806,9 @@ class NSGAII:
                     pitch_list=individual.pitch_list
                 )
 
-                aerial = None
-                aquatic = None
-                
-                try:
-                    aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
-                    
-                    aQ_penalty = self._torque_penalty(aQ, self.aerial_Q_max)
-                    sigma_penalty = self._solidity_penalty(rotor)
+                aerial = self._aerial_eval(rotor, individual)
+                aquatic = self._aquatic_eval(rotor, individual)
 
-                    if (aJ == 0):
-                        # Use Figure of Merit in hover
-                        a_fitness = FM
-                    else:
-                        # Use efficiency otherwise
-                        a_fitness = aEta
-
-                    individual.aerial_fitness = self._compute_aerial_fitness(a_fitness, aQ_penalty, sigma_penalty)
-                    individual.aerial_fitness = self._safe_real(individual.aerial_fitness) # se ainda estiver gerando um complex type
-
-                    aerial = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "Q_penalty": aQ_penalty, "sigma_penalty": sigma_penalty}
-                except Exception as e:
-                    logger.warning(f"[NSGA] Aerial eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
-                    individual.aerial_fitness = 0.0  # penalization
-                    aerial = None
-                
-                try:
-                    wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
-                    
-                    individual.cavitating_proportion = cavitating_proportion
-                
-                    cavitation_penalty  = self._cavitation_penalty(cavitating_proportion)
-                    wQ_penalty          = self._torque_penalty(wQ, self.aquatic_Q_max)
-
-                    if (wJ == 0):
-                        # Use Quality Index as fitness in bollard pull
-                        w_fitness = QI 
-                    else:
-                        # Use efficiency otherwise
-                        w_fitness = wEta
-
-                    individual.aquatic_fitness = self._compute_aquatic_fitness(w_fitness, cavitating_proportion, wQ_penalty)
-                    individual.aquatic_fitness = self._safe_real(individual.aquatic_fitness) # se ainda estiver gerando um complex type
-
-                    aquatic = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "Q_penalty": wQ_penalty}
-                except Exception as e:
-                    logger.warning(f"[NSGA] Aquatic eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
-                    individual.aquatic_fitness = -1e6  # penalization
-                    aquatic = None
-                
                 if (self._write_log_file):
                     self._append_eval_row(
                         generation=generation,
@@ -819,7 +833,7 @@ class NSGAII:
             # Selection, crossover, and mutation
             population = self._create_next_generation(population, fronts)
 
-        if fronts and len(fronts[0]) > 0 and self._write_log_file:
+        if fronts and len(fronts[0]) > 0:
             self._write_pareto_front_csv(fronts[0])
             logger.info(f"[NSGA-II] Pareto front salvo em {self.front_csv_path}")
 
