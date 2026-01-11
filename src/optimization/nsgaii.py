@@ -102,6 +102,20 @@ class NSGAII:
         return float(x)
 
     @staticmethod
+    def _safe_max(values, default=None):
+        """Returns the maximum of a list of values, safely ignoring None and NaN. Returns default if no valid values."""
+        vals = []
+        for v in values:
+            if v is None:
+                continue
+            v = NSGAII._safe_real(v)
+            if v is None:
+                continue
+            if isinstance(v, (int, float)) and (v == v):  # filtra NaN
+                vals.append(float(v))
+        return max(vals) if vals else default
+
+    @staticmethod
     def _serialize_list(value):
         """Converts lists/tuples to 'v1;v2;v3' string. Keeps '' for None."""
         if value is None:
@@ -784,7 +798,7 @@ class NSGAII:
         Executes the NSGA-II optimization process and returns Pareto fronts.
         """
 
-        df_bests_by_generation = pd.DataFrame(columns=["generation", "best_aerial_fitness", "best_aquatic_fitness"])
+        bests_rows = []
 
         population = self._initialize_population()
         for generation in range(1, self.maximum_generations + 1):
@@ -820,11 +834,14 @@ class NSGAII:
                         aerial=aerial,
                         aquatic=aquatic
                     )
-                
-            df_bests_by_generation.add_row({
+
+            best_aerial = self._safe_max((ind.aerial_fitness for ind in population), default=None)
+            best_aquatic = self._safe_max((ind.aquatic_fitness for ind in population), default=None)
+
+            bests_rows.append({
                 "generation": generation,
-                "best_aerial_fitness": max(ind.aerial_fitness for ind in population if ind.aerial_fitness is not None),
-                "best_aquatic_fitness": max(ind.aquatic_fitness for ind in population if ind.aquatic_fitness is not None)
+                "best_aerial_fitness": best_aerial,
+                "best_aquatic_fitness": best_aquatic,
             })
 
             # Perform non-dominated sorting
@@ -842,8 +859,11 @@ class NSGAII:
             # Selection, crossover, and mutation
             population = self._create_next_generation(population, fronts)
 
-        df_bests_by_generation.to_csv(self.run_dir / "bests_by_generation.csv", index=False)
-        logger.info(f"[NSGA-II] Bests by generation saved in {self.run_dir / 'bests_by_generation.csv'}")
+        df_bests_by_generation = pd.DataFrame(bests_rows)
+
+        out_path = self.run_dir / "bests_by_generation.csv"
+        df_bests_by_generation.to_csv(out_path, index=False)
+        logger.info(f"[NSGA-II] Bests by generation saved in {out_path}")
 
         if fronts and len(fronts[0]) > 0:
             self._write_pareto_front_csv(fronts[0])
