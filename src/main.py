@@ -16,6 +16,7 @@ from evaluation.aerial_methods  import AerialBEMT
 from evaluation.aquatic_methods import WaterBEMT
 from optimization.nsgaii        import NSGAII
 from motor                      import Motor
+from fluid                      import Fluid, FluidType
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -161,24 +162,27 @@ if __name__ == "__main__":
     )
 
     aerial_rpm = 4000.0  
-    aquatic_rpm = 200.0  
 
-    motor_data = {
-        "aerial_Q_max": motor.torque_available(aerial_rpm),
-        "aquatic_Q_max": motor.torque_available(aquatic_rpm),
-    }
+    # motor_data = {
+    #     "aerial_Q_max": motor.torque_available(aerial_rpm),
+    #     "aquatic_Q_max": motor.torque_available(aquatic_rpm),
+    # }
         
     # Initialize evaluation methods
     aerial_evaluator = AerialBEMT(
         scenario=Scenario(rpm=aerial_rpm, v_inf=0.0)
     )
 
-    # Tip: mantain tip speed below 39 m/s (2100 rpm for 0.36 m diameter rotor)
+    rho1 = Fluid(FluidType.AIR).rho
+    rho2 = Fluid(FluidType.WATER).rho
+
+    aquatic_rpm = aerial_rpm * ((rho1 / rho2) ** (1/3))
+
     aquatic_evaluator = WaterBEMT(
         scenario=Scenario(rpm=aquatic_rpm, v_inf=0.0)
     )
     
-    optimizer = NSGAII(aerial_evaluator, aquatic_evaluator, problem_config, motor_data, nsga_config, write_log_file)
+    optimizer = NSGAII(aerial_evaluator, aquatic_evaluator, problem_config, nsga_config, write_log_file)
     
     pareto_fronts = optimizer.run()
 

@@ -10,9 +10,9 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 
-from evaluation.evaluation_method import EvaluationMethod
-from .individual                  import Individual
-from rotor                        import Rotor, radial_solidity_profile
+from evaluation.evaluation_method   import EvaluationMethod
+from .individual                    import Individual
+from rotor                          import Rotor
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ https://ieeexplore.ieee.org/abstract/document/996017?casa_token=dDGNqrFAX2YAAAAA
 # https://github.com/smkalami/nsga2-in-python/blob/main/nsga2.py
 
 class NSGAII:
-    def __init__(self, aerial_evaluation_method: EvaluationMethod, aquatic_evaluation_method: EvaluationMethod, problem_configuration, motor_data, nsga_configuration, write_log_file=True):
+    def __init__(self, aerial_evaluation_method: EvaluationMethod, aquatic_evaluation_method: EvaluationMethod, problem_configuration, nsga_configuration, write_log_file=True):
         
         # TODO: adicionar checks nas configurações
         
@@ -49,8 +49,8 @@ class NSGAII:
         self.elitism_fraction       = nsga_configuration["elitism_fraction"]
         self.mutation_rate          = nsga_configuration["mutation_rate"]
 
-        self.aerial_Q_max   = motor_data["aerial_Q_max"]
-        self.aquatic_Q_max  = motor_data["aquatic_Q_max"]
+        # self.aerial_Q_max   = motor_data["aerial_Q_max"]
+        # self.aquatic_Q_max  = motor_data["aquatic_Q_max"]
 
         self.hub_diameter = self.hub_radius * 2 
 
@@ -80,9 +80,9 @@ class NSGAII:
             # Scenario (for traceability)
             "aerial_rpm", "aerial_v_inf", "aquatic_rpm", "aquatic_v_inf",
             # aerial metrics
-            "aerial_T","aerial_Q","aerial_P","aerial_J","aerial_CT","aerial_CQ","aerial_CP","aerial_eta", "FM", "aerial_fitness", "aerial_Q_penalty", "aerial_sigma_penalty",
+            "aerial_T","aerial_Q","aerial_P","aerial_J","aerial_CT","aerial_CQ","aerial_CP","aerial_eta", "FM", "aerial_fitness", "aerial_solidity_penalty",
             # water metrics
-            "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta", "cavitating_proportion", "QI","aquatic_fitness", "cavitation_penalty", "aquatic_Q_penalty",
+            "aquatic_T","aquatic_Q","aquatic_P","aquatic_J","aquatic_CT","aquatic_CQ","aquatic_CP","aquatic_eta", "cavitating_proportion", "QI","aquatic_fitness", "cavitation_penalty", "aquatic_solidity_penalty",
         ]
 
         if self._write_log_file:
@@ -153,8 +153,7 @@ class NSGAII:
             "aerial_CP":  "" if aerial  is None else aerial.get("CP",""),
             "aerial_eta": "" if aerial  is None else aerial.get("eta",""),
             "FM": "" if aerial  is None else aerial.get("FM",""),
-            "aerial_Q_penalty": "" if aerial  is None else aerial.get("Q_penalty",""),
-            "aerial_sigma_penalty": "" if aerial  is None else aerial.get("sigma_penalty",""),
+            "aerial_solidity_penalty": "" if aerial  is None else aerial.get("solidity_penalty",""),
             "aerial_fitness": getattr(individual, "aerial_fitness", ""),
 
             "aquatic_T":   "" if aquatic is None else aquatic.get("T",""),
@@ -166,8 +165,8 @@ class NSGAII:
             "aquatic_CP":  "" if aquatic is None else aquatic.get("CP",""),
             "aquatic_eta": "" if aquatic is None else aquatic.get("eta",""),
             "cavitating_proportion": "" if aquatic is None else aquatic.get("cavitating_proportion",""),
-            "aquatic_Q_penalty": "" if aquatic is None else aquatic.get("Q_penalty",""),
             "cavitation_penalty": "" if aquatic is None else aquatic.get("cavitation_penalty",""),
+            "aquatic_solidity_penalty": "" if aquatic is None else aquatic.get("solidity_penalty",""),
             "QI": "" if aquatic is None else aquatic.get("QI",""),
             "aquatic_fitness": getattr(individual, "aquatic_fitness", ""),
         }
@@ -199,30 +198,30 @@ class NSGAII:
             a = w = None
 
             aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
-            aQ_penalty = self._torque_penalty(aQ, self.aerial_Q_max)
-            sigma_penalty = self._solidity_penalty(rotor)
+
+            a_solidity_penalty = self._solidity_penalty(rotor)
 
             if (aJ > 0):
                 a_fitness = aEta
             else:
                 a_fitness = FM
-            
-            a_fitness = self._compute_aerial_fitness(a_fitness, aQ_penalty, sigma_penalty)
 
-            a = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "aerial_fitness": a_fitness, "Q_penalty": aQ_penalty, "sigma_penalty": sigma_penalty}
+            a_fitness = self._compute_aerial_fitness(a_fitness, a_solidity_penalty)
+
+            a = {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "aerial_fitness": a_fitness, "solidity_penalty": a_solidity_penalty}
 
             wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
             cavitation_penalty = self._cavitation_penalty(cavitating_proportion)
-            wQ_penalty = self._torque_penalty(wQ, self.aquatic_Q_max)
+            w_solidity_penalty = self._solidity_penalty(rotor)
 
             if (wJ > 0):
                 w_fitness = wEta
             else:
                 w_fitness = QI
 
-            w_fitness = self._compute_aquatic_fitness(w_fitness, cavitation_penalty, wQ_penalty)
+            w_fitness = self._compute_aquatic_fitness(w_fitness, cavitation_penalty, w_solidity_penalty)
 
-            w = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "Q_penalty": wQ_penalty, "aquatic_fitness": w_fitness}
+            w = {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "aquatic_fitness": w_fitness, "solidity_penalty": w_solidity_penalty}
 
             self._append_eval_row(
                 generation="",  # último gen
@@ -317,6 +316,12 @@ class NSGAII:
                     for _ in range(n)]
 
             foil = [random.choice(self.foil_options) for _ in range(n)]
+
+            max_delta_pitch = (self.max_alpha - self.min_alpha) * 0.2  # Exemple: 20% of range
+            max_delta_chord = 0.01 # Exemple: 1 cm
+
+            pitch = self._smooth_profile(pitch, max_delta_pitch)
+            chord = self._smooth_profile(chord, max_delta_chord)
             return chord, pitch, foil
 
         archetypes = [
@@ -334,7 +339,7 @@ class NSGAII:
             chord, pitch, foil = generator()
 
             # Apply smoothing constraints
-            pitch, chord = self._adjust_phisical_constraints(pitch, chord)
+            # pitch, chord = self._adjust_phisical_constraints(pitch, chord)
 
             individual = Individual(
                 D=self.diameter,
@@ -504,34 +509,34 @@ class NSGAII:
                 smoothed[i] = smoothed[i - 1] + max_delta * math.copysign(1, delta)
         return smoothed
 
-    def _enforce_chord_constraints(self, chord_list):
-        """
-        First section chord cannot be larger than hub diameter.
-        """
-        if not chord_list:
-            return chord_list
+    # def _enforce_chord_constraints(self, chord_list):
+        # """
+        # First section chord cannot be larger than hub diameter.
+        # """
+        # if not chord_list:
+        #     return chord_list
 
-        chord_list = list(chord_list)
-        if chord_list[0] > self.hub_diameter * 0.6:
-            chord_list[0] = self.hub_diameter * 0.6
-        return chord_list
+        # chord_list = list(chord_list)
+        # if chord_list[0] > self.hub_diameter * 0.6:
+        #     chord_list[0] = self.hub_diameter * 0.6
+        # return chord_list
 
     def _adjust_phisical_constraints(self, pitch_list, chord_list):
         """
         Adjusts pitch and chord lists to respect physical constraints.
         """
         # TODO: testar e setar valores adequados
-        max_delta_pitch = (self.max_alpha - self.min_alpha) * 0.2  # Exemple: 20% of range
-        max_delta_chord = 0.01 # Exemple: 1 cm
+        # max_delta_pitch = (self.max_alpha - self.min_alpha) * 0.2  # Exemple: 20% of range
+        max_delta_chord = 0.005 # Exemple: 5mm
 
         # Respect hub diameter constraint
-        chord_list = self._enforce_chord_constraints(chord_list)
+        # chord_list = self._enforce_chord_constraints(chord_list)
 
-        pitch_list = self._smooth_profile(pitch_list, max_delta_pitch)
+        # pitch_list = self._smooth_profile(pitch_list, max_delta_pitch)
         chord_list = self._smooth_profile(chord_list, max_delta_chord)
 
         # Second pass to ensure constraints
-        chord_list = self._enforce_chord_constraints(chord_list)
+        # chord_list = self._enforce_chord_constraints(chord_list)
 
         return pitch_list, chord_list
 
@@ -566,7 +571,7 @@ class NSGAII:
             child_chord[cut]     = interp_chord
 
         # --- Post-smoothing to avoid jagged profiles ---
-        child_pitch, child_chord = self._adjust_phisical_constraints(child_pitch, child_chord)
+        # child_pitch, child_chord = self._adjust_phisical_constraints(child_pitch, child_chord)
 
         child_B = random.choice([parent1.B, parent2.B])
 
@@ -657,7 +662,7 @@ class NSGAII:
             foil_list[i] = new_foil
 
         # Adjust to respect physical constraints
-        pitch_list, chord_list = self._adjust_phisical_constraints(pitch_list, chord_list)
+        # pitch_list, chord_list = self._adjust_phisical_constraints(pitch_list, chord_list)
 
         # Update individual
         individual.pitch_list = pitch_list
@@ -677,66 +682,97 @@ class NSGAII:
         penalty = max(0.0, min(1.0, cav))  # ensure cav is between 0 and 1
         return penalty
 
-    def _torque_penalty(self, T, T_max):
-        """
-        Returns a penalty based on how much the required torque exceeds T_max.
-
-        Output is clamped between 0 and 1.
-        """
-
-        if T <= T_max:
-            return 0.0
-
-        penalty = (T - T_max) / T
-
-        penalty = max(0.0, min(1.0, penalty))
-
-        return penalty
-
-    def _solidity_penalty(self, rotor: Rotor):
-        """
-        Calculates a penalty based on the radial solidity profile.
-        The penalty increases when the tip solidity is significantly higher than the mid-span solidity.
-        This is to avoid designs with excessive tip solidity which can lead to inefficiencies.
-        """
-
-        _, sig_mid, sig_tip = radial_solidity_profile(rotor)
-
-        ALPHA   = 0.8  # tip solidity percentage of mid-span solidity where penalty starts
-        W_SIGMA = 0.4  # weight of solidity penalty
-
-        if sig_mid > 0:
-            ratio = sig_tip / sig_mid
-        else:
-            return 0.0
-
-        if ratio <= ALPHA:
+    def _solidity_penalty(
+            self, 
+            rotor,
+            min_r_frac: float = 0.20,
+            sigma_root: float = 0.24,   # sigma_max at x = min_r_frac (e.g., 0.20)
+            sigma_tip: float  = 0.16,   # sigma_max at x = 1.0 
+            # Normalization / saturation controls
+            tau_mean: float = 0.10,     # mean relative violation that maps to penalty=1 (before mixing)
+            tau_max: float  = 0.20,     # max relative violation that maps to penalty=1 (before mixing)
+            beta: float = 0.70,         # mix weight: mean vs max (0..1)
+            weight_power: float = 2.0,  # w_i = x^weight_power (emphasize tip)
+            eps: float = 1e-12
+    ) -> float:
+        secs = getattr(rotor, "sections", None)
+        if not secs:
             return 0.0
         
-        # Smooth linear ramp from alpha..1 -> 0..1 (clamped)
-        penalty = (ratio - ALPHA) / (1.0 - ALPHA)
-        penalty = max(0.0, min(1.0, penalty))
+        R = float(getattr(rotor, "blade_radius", 0.0))
+        if R <= 0.0:
+            return 0.0
+        
+        B = int(getattr(rotor, "n_blades", 0))
+        if B <= 0:
+            return 0.0
+        
+        denom = max(eps, (1.0 - min_r_frac))
+        slope = (sigma_tip - sigma_root) / denom
 
-        # Apply weight
-        penalty *= W_SIGMA
+        def sigma_max(x: float) -> float:
+            # clamp x to [min_r_frac, 1.0]
+            x = max(min_r_frac, min(1.0, x))
+            return max(eps, sigma_root + slope * (x - min_r_frac))
+        
+        violations = []
+        weights = []
 
-        return penalty
+        for sec in secs:
+            r  = float(getattr(sec, "radius", 0.0))
+            if r <= 0.0:
+                continue
 
-    def _compute_aerial_fitness(self, raw_result, aQ_penalty, sigma_penalty):
+            x = r / R
+            if x < min_r_frac or x > 1.0:
+                continue
+
+            sigma_i = float(getattr(sec, "sigma"))
+            sigma_i_max = sigma_max(x)
+
+            # Relative violation (0 if within limit, >0 if violated)
+            rel_violation = max(0.0, (sigma_i - sigma_i_max) / sigma_i_max)
+
+            # Weight to emphasize tip (0 if within limit, >0 if violated)
+            weight = x ** weight_power
+
+            violations.append(rel_violation)
+            weights.append(weight)
+
+        if not violations:
+            return 0.0
+        
+        # Weighted mean violation
+        weighted_sum = sum(weights) + eps
+        mean_violation = sum(v * w for v, w in zip(violations, weights)) / weighted_sum
+
+        # Weighted max violation
+        max_violation = max(violations)
+
+        # Map to penalty [0,1]
+        mean_penalty = min(1.0, mean_violation / max(eps, tau_mean))
+        max_penalty  = min(1.0, max_violation  / max(eps, tau_max))
+
+        # Combined penalty
+        penalty = beta * mean_penalty + (1.0 - beta) * max_penalty
+        return max(0.0, min(1.0, penalty))
+
+    def _compute_aerial_fitness(self, raw_result, solidity_penalty):
         """
-        Computes aerial fitness based on efficiency, torque penalty, and solidity penalty.
+        Computes aerial fitness based on efficiency and penalties.
         """
-        fitness = raw_result * (1.0 - aQ_penalty) * (1.0 - sigma_penalty)
+        solidity_alpha = 0.7  # weight of solidity penalty
+
+        fitness = raw_result * (1.0 - solidity_alpha * solidity_penalty)
         return fitness
-    
-    def _compute_aquatic_fitness(self, raw_result, cavitation_penalty, wQ_penalty):
+
+    def _compute_aquatic_fitness(self, raw_result, cavitation_penalty, solidity_penalty):
         """
         Computes aquatic fitness based on efficiency, cavitation penalty, and torque penalty.
         """
-        combined_factor = (1.0 - cavitation_penalty) * (1.0 - wQ_penalty)
-        combined_factor = max(0.0, min(1.0, combined_factor))
+        solidity_alpha = 0.2  # weight of solidity penalty, low in aquatic to prioritize cavitation
 
-        fitness = raw_result * combined_factor
+        fitness = raw_result * (1.0 - cavitation_penalty) * (1.0 - solidity_alpha * solidity_penalty)
         return fitness
 
     def _aerial_eval(self, rotor, individual):
@@ -745,9 +781,8 @@ class NSGAII:
         """
         try:
             aT, aQ, aP, aJ, aCT, aCQ, aCP, aEta, FM = self.aerial_evaluation_method.evaluate(rotor)
-            
-            aQ_penalty = self._torque_penalty(aQ, self.aerial_Q_max)
-            sigma_penalty = self._solidity_penalty(rotor)
+
+            solidity_penalty = self._solidity_penalty(rotor)
 
             if (aJ == 0):
                 # Use Figure of Merit in hover
@@ -756,10 +791,10 @@ class NSGAII:
                 # Use efficiency otherwise
                 a_fitness = aEta
 
-            individual.aerial_fitness = self._compute_aerial_fitness(a_fitness, aQ_penalty, sigma_penalty)
-            individual.aerial_fitness = self._safe_real(individual.aerial_fitness) # se ainda estiver gerando um complex type
+            individual.aerial_fitness = self._compute_aerial_fitness(a_fitness, solidity_penalty)
+            individual.aerial_fitness = self._safe_real(individual.aerial_fitness)
 
-            return {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "Q_penalty": aQ_penalty, "sigma_penalty": sigma_penalty}
+            return {"T": aT, "Q": aQ, "P": aP, "J": aJ, "CT": aCT, "CQ": aCQ, "CP": aCP, "eta": aEta, "FM": FM, "solidity_penalty": solidity_penalty}
         except Exception as e:
             logger.warning(f"[NSGA] Aerial eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
             individual.aerial_fitness = 0.0  # penalization
@@ -769,13 +804,14 @@ class NSGAII:
         """
         Aquatic evaluation for a given rotor and individual.
         """
+
         try:
             wT, wQ, wP, wJ, wCT, wCQ, wCP, wEta, cavitating_proportion, QI = self.aquatic_evaluation_method.evaluate(rotor)
             
             individual.cavitating_proportion = cavitating_proportion
         
             cavitation_penalty  = self._cavitation_penalty(cavitating_proportion)
-            wQ_penalty          = self._torque_penalty(wQ, self.aquatic_Q_max)
+            solidity_penalty = self._solidity_penalty(rotor)
 
             if (wJ == 0):
                 # Use Quality Index as fitness in bollard pull
@@ -784,10 +820,10 @@ class NSGAII:
                 # Use efficiency otherwise
                 w_fitness = wEta
 
-            individual.aquatic_fitness = self._compute_aquatic_fitness(w_fitness, cavitating_proportion, wQ_penalty)
-            individual.aquatic_fitness = self._safe_real(individual.aquatic_fitness) # se ainda estiver gerando um complex type
+            individual.aquatic_fitness = self._compute_aquatic_fitness(w_fitness, cavitation_penalty, solidity_penalty)
+            individual.aquatic_fitness = self._safe_real(individual.aquatic_fitness)
 
-            return {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "Q_penalty": wQ_penalty}
+            return {"T": wT, "Q": wQ, "P": wP, "J": wJ, "CT": wCT, "CQ": wCQ, "CP": wCP, "eta": wEta, "cavitating_proportion": cavitating_proportion, "QI": QI, "cavitation_penalty": cavitation_penalty, "solidity_penalty": solidity_penalty}
         except Exception as e:
             logger.warning(f"[NSGA] Aquatic eval failed for individual (B={individual.B}, foils={set(individual.foil_list)}): {e}")
             individual.aquatic_fitness = -1e6  # penalization

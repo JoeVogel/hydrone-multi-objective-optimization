@@ -32,16 +32,16 @@ class Fluid:
         # pv = vapor pressure (kPa) (Antoine)
 
         if (type == FluidType.AIR):
-            self.rho = 1.225  
-            self.mu = 1.81e-5  
+            self.rho = 1.1843  
+            self.mu = 0.000018448 
         elif (type == FluidType.WATER):
-            self.rho = 991.0  
-            self.mu = 1.138e-3 
-            self.pv = 1.706
+            self.rho = 997.05  
+            self.mu = 0.00089002
+            self.pv = 3.1690
         else:
             raise ValueError(f"Unsupported fluid type: {type}")
         
         self.nu = self.mu / self.rho
-        self.temperature = 15.0
+        self.temperature = 25.0
 
 

@@ -60,7 +60,7 @@ class Solver:
         D = self.rotor.diameter
         R = 0.5*D
         rho = self.fluid.rho
-        n = self.scenario.rpm/60.0
+        n = self.scenario.rpm/60.0 #RPS
         J = self.scenario.v_inf/(n*D)
  
         CT = T/(rho*n**2*D**4)
