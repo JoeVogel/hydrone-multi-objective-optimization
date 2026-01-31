@@ -161,7 +161,7 @@ if __name__ == "__main__":
         max_current=configs["motor"]["max_current"]
     )
 
-    aerial_rpm = 4000.0  
+    aerial_rpm = 3000.0  
 
     # motor_data = {
     #     "aerial_Q_max": motor.torque_available(aerial_rpm),
@@ -179,7 +179,7 @@ if __name__ == "__main__":
     aquatic_rpm = aerial_rpm * ((rho1 / rho2) ** (1/3))
 
     aquatic_evaluator = WaterBEMT(
-        scenario=Scenario(rpm=aquatic_rpm, v_inf=0.0)
+        scenario=Scenario(rpm=int(aquatic_rpm), v_inf=0.0)
     )
     
     optimizer = NSGAII(aerial_evaluator, aquatic_evaluator, problem_config, nsga_config, write_log_file)

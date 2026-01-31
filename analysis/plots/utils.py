@@ -315,14 +315,15 @@ def plot_generational_metrics_interactive(df_evaluations: pd.DataFrame):
 
     required_cols = [
         "generation",
+        "B",
         "aerial_fitness",
         "aquatic_fitness",
         "cavitating_proportion",
         "QI",
-        "aerial_chord_penalty",
-        "aerial_inertia_proxy_penalty",
-        "aerial_tip_area_fraction_penalty",
-        "aerial_blade_count_penalty"
+        "FM",
+        "aerial_blade_count_penalty",
+        "aerial_solidity_penalty",
+        "aquatic_solidity_penalty",
     ]
     for col in required_cols:
         if col not in df_evaluations.columns:
@@ -332,28 +333,33 @@ def plot_generational_metrics_interactive(df_evaluations: pd.DataFrame):
         df_evaluations
         .groupby("generation")
         .agg(
-            # Fitness e métricas (best = maior, exceto cavitation)
+            b_mean=("B", "mean"),
+
+            # Fitness e métricas (best = maior)
             aerial_mean=("aerial_fitness", "mean"),
             aerial_best=("aerial_fitness", "max"),
+
             aquatic_mean=("aquatic_fitness", "mean"),
             aquatic_best=("aquatic_fitness", "max"),
-            cav_mean=("cavitating_proportion", "mean"),
-            cav_best=("cavitating_proportion", "min"),  # melhor = menor cavitação
+
             qi_mean=("QI", "mean"),
             qi_best=("QI", "max"),
 
+            fm_mean=("FM", "mean"),
+            fm_best=("FM", "max"),
+
             # Penalidades (best = menor)
-            aerial_chord_penalty_mean=("aerial_chord_penalty", "mean"),
-            aerial_chord_penalty_best=("aerial_chord_penalty", "min"),
+            blade_count_mean=("aerial_blade_count_penalty", "mean"),
+            blade_count_best=("aerial_blade_count_penalty", "min"),
 
-            aerial_inertia_proxy_penalty_mean=("aerial_inertia_proxy_penalty", "mean"),
-            aerial_inertia_proxy_penalty_best=("aerial_inertia_proxy_penalty", "min"),
+            cav_mean=("cavitating_proportion", "mean"),
+            cav_best=("cavitating_proportion", "min"), 
 
-            aerial_tip_area_penalty_mean=("aerial_tip_area_fraction_penalty", "mean"),
-            aerial_tip_area_penalty_best=("aerial_tip_area_fraction_penalty", "min"),
+            aerial_solidity_penalty_mean=("aerial_solidity_penalty", "mean"),
+            aerial_solidity_penalty_best=("aerial_solidity_penalty", "min"),
 
-            aerial_blade_count_penalty_mean=("aerial_blade_count_penalty", "mean"),
-            aerial_blade_count_penalty_best=("aerial_blade_count_penalty", "min"),
+            aquatic_solidity_penalty_mean=("aquatic_solidity_penalty", "mean"),
+            aquatic_solidity_penalty_best=("aquatic_solidity_penalty", "min"),
         )
         .reset_index()
         .sort_values("generation")
@@ -363,17 +369,27 @@ def plot_generational_metrics_interactive(df_evaluations: pd.DataFrame):
 
     # Cores fixas por métrica
     colors = {
-        "aerial": "#1f77b4",        # azul
-        "aquatic": "#2ca02c",       # verde
-        "cav": "#d62728",           # vermelho
-        "qi": "#9467bd",            # roxo
-        "chord_decay": "#ff7f0e",   # laranja
-        "inertia_proxy": "#8c564b", # marrom
-        "tip_area": "#7f7f7f",      # cinza
-        "blade_count": "#e377c2"    # rosa
+        "total_b": "#e377c2",           # rosa
+        "aerial": "#1f77b4",            # azul
+        "aquatic": "#2ca02c",           # verde
+        "qi": "#9467bd",                # roxo
+        "fm": "#ff7f0e",                # laranja
+        "cav": "#d62728",               # vermelho
+        "aerial_solidity": "#8c564b",   # marrom
+        "aquatic_solidity": "#7f7f7f",  # cinza
+        "blade_count": "#17becf",       # ciano
     }
 
     fig = go.Figure()
+
+    # Número médio de pás
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["b_mean"],
+        mode="lines",
+        name="Número médio de pás",
+        line=dict(color=colors["total_b"], dash="solid")
+    ))
 
     # Aerial fitness (best = maior)
     fig.add_trace(go.Scatter(
@@ -407,22 +423,6 @@ def plot_generational_metrics_interactive(df_evaluations: pd.DataFrame):
         line=dict(color=colors["aquatic"], dash="dash")
     ))
 
-    # Cavitating proportion (best = menor)
-    fig.add_trace(go.Scatter(
-        x=x,
-        y=grouped["cav_mean"],
-        mode="lines",
-        name="Cavitating proportion (média)",
-        line=dict(color=colors["cav"], dash="solid")
-    ))
-    fig.add_trace(go.Scatter(
-        x=x,
-        y=grouped["cav_best"],
-        mode="lines",
-        name="Cavitating proportion (melhor/menor)",
-        line=dict(color=colors["cav"], dash="dash")
-    ))
-
     # QI (best = maior)
     fig.add_trace(go.Scatter(
         x=x,
@@ -439,65 +439,84 @@ def plot_generational_metrics_interactive(df_evaluations: pd.DataFrame):
         line=dict(color=colors["qi"], dash="dash")
     ))
 
-    # Penalidades aéreas (best = menor)
+    # FM (best = maior)
     fig.add_trace(go.Scatter(
         x=x,
-        y=grouped["aerial_chord_penalty_mean"],
+        y=grouped["fm_mean"],
         mode="lines",
-        name="Chord decay penalty (média)",
-        line=dict(color=colors["chord_decay"], dash="solid")
+        name="FM (média)",
+        line=dict(color=colors["fm"], dash="solid")
     ))
     fig.add_trace(go.Scatter(
         x=x,
-        y=grouped["aerial_chord_penalty_best"],
+        y=grouped["fm_best"],
         mode="lines",
-        name="Chord decay penalty (melhor/menor)",
-        line=dict(color=colors["chord_decay"], dash="dash")
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=x,
-        y=grouped["aerial_inertia_proxy_penalty_mean"],
-        mode="lines",
-        name="Inertia proxy penalty (média)",
-        line=dict(color=colors["inertia_proxy"], dash="solid")
-    ))
-    fig.add_trace(go.Scatter(
-        x=x,
-        y=grouped["aerial_inertia_proxy_penalty_best"],
-        mode="lines",
-        name="Inertia proxy penalty (melhor/menor)",
-        line=dict(color=colors["inertia_proxy"], dash="dash")
+        name="FM (melhor)",
+        line=dict(color=colors["fm"], dash="dash")
     ))
 
-    fig.add_trace(go.Scatter(
-        x=x,
-        y=grouped["aerial_tip_area_penalty_mean"],
-        mode="lines",
-        name="Tip area penalty (média)",
-        line=dict(color=colors["tip_area"], dash="solid")
-    ))
-    fig.add_trace(go.Scatter(
-        x=x,
-        y=grouped["aerial_tip_area_penalty_best"],
-        mode="lines",
-        name="Tip area penalty (melhor/menor)",
-        line=dict(color=colors["tip_area"], dash="dash")
-    ))
+    # Penalidades (best = menor)
 
+    # Blade count penalty
     fig.add_trace(go.Scatter(
         x=x,
-        y=grouped["aerial_blade_count_penalty_mean"],
+        y=grouped["blade_count_mean"],
         mode="lines",
         name="Blade count penalty (média)",
         line=dict(color=colors["blade_count"], dash="solid")
     ))
     fig.add_trace(go.Scatter(
         x=x,
-        y=grouped["aerial_blade_count_penalty_best"],
+        y=grouped["blade_count_best"],
         mode="lines",
         name="Blade count penalty (melhor/menor)",
         line=dict(color=colors["blade_count"], dash="dash")
+    ))
+
+    # Cavitation proportion
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["cav_mean"],
+        mode="lines",
+        name="Cavitating proportion (média)",
+        line=dict(color=colors["cav"], dash="solid")
+    ))
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["cav_best"],
+        mode="lines",
+        name="Cavitating proportion (melhor/menor)",
+        line=dict(color=colors["cav"], dash="dash")
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["aerial_solidity_penalty_mean"],
+        mode="lines",
+        name="Aerial solidity penalty (média)",
+        line=dict(color=colors["aerial_solidity"], dash="solid")
+    ))
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["aerial_solidity_penalty_best"],
+        mode="lines",
+        name="Aerial solidity penalty (melhor/menor)",
+        line=dict(color=colors["aerial_solidity"], dash="dash")
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["aquatic_solidity_penalty_mean"],
+        mode="lines",
+        name="Aquatic solidity penalty (média)",
+        line=dict(color=colors["aquatic_solidity"], dash="solid")
+    ))
+    fig.add_trace(go.Scatter(
+        x=x,
+        y=grouped["aquatic_solidity_penalty_best"],
+        mode="lines",
+        name="Aquatic solidity penalty (melhor/menor)",
+        line=dict(color=colors["aquatic_solidity"], dash="dash")
     ))
 
     fig.update_layout(
