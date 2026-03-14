@@ -69,7 +69,7 @@ def main():
             "elitism_fraction": 0.22,
             "mutation_rate": 0.49,
             "pop_size": 500,
-            "generations": 150,
+            "generations": 200,
             "seed": i * 100
         })
 
@@ -99,7 +99,7 @@ def main():
             else:
                 print(f"[RUN {res['run_id']}] FAILED: {res['error']}")
 
-    # Se quiser salvar tudo em um JSON único:
+    # Salvar tudo em um JSON único:
     with open("all_runs_results.json", "w") as f:
         json.dump(results, f, indent=2)
 

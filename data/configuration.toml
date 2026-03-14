@@ -4,11 +4,6 @@ diameter = 0.254
 hub_radius = 0.00825
 number_of_sections = 20
 
-[motor]
-KV = 880
-voltage = 14.8
-max_current = 20
-
 [nsga2]
 pop_size = 500
 generations = 150

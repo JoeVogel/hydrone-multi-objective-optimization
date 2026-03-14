@@ -1,0 +1,189 @@
+@startuml
+'========================
+' Layout knobs (tweak as needed)
+'========================
+top to bottom direction
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam wrapWidth 240
+skinparam maxMessageSize 120
+skinparam shadowing true
+skinparam nodesep 100
+
+'========================
+' Domain
+'========================
+class Scenario {
+  +rpm: float
+  +v_inf: float
+  +twist: float
+  +__init__(rpm, v_inf, twist=0.0)
+}
+
+class Fluid {
+  +rho: float
+  +mu: float
+  +nu: float
+  +pv: float
+  +temperature: float
+  +__init__(type=FluidType.AIR)
+}
+
+class Airfoil {
+  +name: str
+  +alpha_: array
+  +Cl_: array
+  +Cd_: array
+  +re_list: list
+  +default_Re: float
+  +Cl(alpha_rad, Re=None): float
+  +Cd(alpha_rad, Re=None): float
+  +Cp_min(alpha_rad, Re=None): float
+  +stall_alpha(Re=None): float
+}
+
+class Rotor {
+  +n_blades: int
+  +diameter: float
+  +hub_radius: float
+  +number_of_sections: int
+  +sections: list<Section>
+  +__init__(...)
+  +generate_rotor_section_points()
+  +precalc(twist)
+  +sections_dataframe()
+}
+
+class Section {
+  +airfoil: Airfoil
+  +radius: float
+  +width: float
+  +pitch: float
+  +chord: float
+  +Re: float
+  +AoA: float
+  +Cl: float
+  +Cd: float
+  +Cp_min: float
+  +precalc()
+  +forces(phi, v, omega, fluid)
+}
+
+' Composition: Rotor contains Sections
+Rotor "1" *-- "*" Section : sections
+
+' Association: Section uses Airfoil
+Section -left-> Airfoil : uses
+
+'========================
+' Solver
+'========================
+class Solver {
+  +scenario: Scenario
+  +fluid: Fluid
+  +__init__(fluid, scenario)
+  +rotor_coeffs(T, Q, P)
+  +solve(rotor)
+  +run(rotor)
+}
+
+Solver --> Scenario
+Solver --> Fluid
+Solver ..> Rotor : evaluates
+
+'========================
+' Evaluation
+'========================
+abstract class EvaluationMethod {
+  +type: EvaluationType
+  +fidelity_level: FidelityLevel
+  +__init__(evaluation_type, fidelity_level)
+  +evaluate(rotor)
+}
+
+class AerialBEMT {
+  +fluid: Fluid
+  +scenario: Scenario
+  +solver: Solver
+  +__init__(scenario)
+  +evaluate(rotor)
+}
+
+class WaterBEMT {
+  +fluid: Fluid
+  +scenario: Scenario
+  +solver: Solver
+  +__init__(scenario)
+  +evaluate(rotor)
+  +compute_quality_index_bollard()
+}
+
+EvaluationMethod <|-- AerialBEMT
+EvaluationMethod <|-- WaterBEMT
+
+AerialBEMT --> Solver
+WaterBEMT --> Solver
+
+AerialBEMT ..> Fluid : instantiates
+WaterBEMT ..> Fluid : instantiates
+
+'========================
+' Optimization
+'========================
+class Individual {
+  +D: float
+  +B: int
+  +chord_list: list
+  +pitch_list: list
+  +foil_list: list
+  +aerial_fitness: float
+  +aquatic_fitness: float
+  +cavitating_proportion: float
+  +rank: int
+  +crowding_distance: float
+  +dominated_solutions: list
+  +domination_count: int
+}
+
+class NSGAII {
+  +aerial_evaluation_method: EvaluationMethod
+  +aquatic_evaluation_method: EvaluationMethod
+  +population_size: int
+  +maximum_generations: int
+  +elitism_fraction: float
+  +mutation_rate: float
+  +aerial_eval()
+  +aquatic_eval()
+  +run()
+}
+
+NSGAII "1" o-- "0..*" Individual : population
+NSGAII --> EvaluationMethod : calls evaluate()
+NSGAII ..> Rotor : builds for evaluation
+
+'========================
+' Main module
+'========================
+class main_py << (M,#FFFFFF) module >> {
+  +load_config_toml()
+  +plot_fronts()
+  +__main__()
+}
+
+main_py ..> Scenario : creates(2x)
+main_py ..> AerialBEMT : creates
+main_py ..> WaterBEMT : creates
+main_py ..> NSGAII : creates
+
+
+together {
+class AerialBEMT
+class WaterBEMT
+}
+
+main_py -right[hidden]-> NSGAII
+NSGAII -right[hidden]-> Individual
+Solver -right[hidden]-> Rotor
+
+
+@enduml

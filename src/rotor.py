@@ -257,7 +257,7 @@ class Section:
         kappap = 4.0 * F * sin(phi) * cos(phi)  / (self.sigma * CQ)
 
         # Linear induction factors for propellers
-        a  = 1.0 / (kappa  + 1.0)
+        a  = 1.0 / (kappa  - 1.0)
         ap = 1.0 / (kappap + 1.0)
 
         # Physical clamps
@@ -358,9 +358,6 @@ class Section:
         # Store results
         self.a  = a
         self.ap = ap
-
-        # if fluid.rho < 2.0 and self.radius < 0.09 and self.radius > 0.08:
-        #     print(self.Re)
         
         v = (1 + a)*v_inf
         vp = (1 - ap)*omega*r

@@ -54,26 +54,9 @@ class AerialBEMT(EvaluationMethod):
         if T <= 0:
             return 0.0
 
-        FM_raw = (T**(3/2)) / (P * sqrt(2 * rho * A))
+        FM = (T**(3/2)) / (P * sqrt(2 * rho * A))
 
-        # Clamp FM between 0 and 1
-        # if FM_raw > 1.0:
-        #     logger.warning(
-        #         "[FM WARNING] FM_raw=%.5f > 1.0 — ajustando para 1.0 "
-        #         "(T=%.3f N, P=%.3f W, D=%.4f m, rho=%.3f, A=%.4f)",
-        #         FM_raw, T, P, rotor.diameter, rho, A
-        #     )
-        #     return 1.0
-
-        # if FM_raw < 0.0:
-        #     logger.warning(
-        #         "[FM WARNING] FM_raw=%.5f < 0 — ajustando para 0 "
-        #         "(T=%.3f N, P=%.3f W, D=%.4f m)",
-        #         FM_raw, T, P, rotor.diameter
-        #     )
-        #     return 0.0
-
-        return FM_raw
+        return FM
 
     def evaluate(self, rotor):
         """ Avalia o desempenho do propulsor baseado no modelo BEMT para ambiente aéreo """

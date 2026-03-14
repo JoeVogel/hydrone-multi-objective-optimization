@@ -15,7 +15,6 @@ from scenario                   import Scenario
 from evaluation.aerial_methods  import AerialBEMT
 from evaluation.aquatic_methods import WaterBEMT
 from optimization.nsgaii        import NSGAII
-from motor                      import Motor
 from fluid                      import Fluid, FluidType
 
 import numpy as np
@@ -155,18 +154,7 @@ if __name__ == "__main__":
         "mutation_rate": nsga_mutrate,
     }
 
-    motor = Motor(
-        KV=configs["motor"]["KV"], 
-        voltage=configs["motor"]["voltage"], 
-        max_current=configs["motor"]["max_current"]
-    )
-
-    aerial_rpm = 3000.0  
-
-    # motor_data = {
-    #     "aerial_Q_max": motor.torque_available(aerial_rpm),
-    #     "aquatic_Q_max": motor.torque_available(aquatic_rpm),
-    # }
+    aerial_rpm = 4000.0  
         
     # Initialize evaluation methods
     aerial_evaluator = AerialBEMT(
