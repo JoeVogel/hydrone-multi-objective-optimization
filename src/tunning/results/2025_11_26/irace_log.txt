@@ -1,0 +1,154 @@
+> irace(scenario)
+# Read 1 configuration(s) from file 'D:/Mestrado/Dissertação/hydrone-multi-objective-optimization/src/tunning/configurations.txt'
+# 2025-11-26 10:55:46 -03: Initialization
+# Elitist race
+# Elitist new instances: 1
+# Elitist limit: 2
+# nbIterations: 3
+# minNbSurvival: 3
+# nbParameters: 2
+# seed: 340745138
+# confidence level: 0.95
+# budget: 400
+# mu: 5
+# deterministic: FALSE
+
+# 2025-11-26 10:55:46 -03: Iteration 1 of 3
+# experimentsUsedSoFar: 0
+# remainingBudget: 400
+# currentBudget: 133
+# nbConfigurations: 22
+# Markers:
+     x No test is performed.
+     c Configurations are discarded only due to capping.
+     - The test is performed and some configurations are discarded.
+     = The test is performed but no configuration is discarded.
+     ! The test is performed and configurations could be discarded but elite configurations are preserved.
+     . All alive configurations are elite and nothing is discarded
+
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+| |   Instance|      Alive|       Best|       Mean best| Exp so far|  W time|  rho|KenW|  Qvar|
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+|x|          1|         22|         14|    -1.058222787|         22|07:12:49|   NA|  NA|    NA|
+|x|          2|         22|         14|    -1.058222787|         44|06:58:40|+1.00|1.00|0.0000|
+|x|          3|         22|         14|    -1.058222787|         66|07:04:58|+1.00|1.00|0.0000|
+|x|          4|         22|         14|    -1.058222787|         88|07:06:09|+1.00|1.00|0.0000|
+|-|          5|          1|         14|    -1.058222787|        110|06:56:54|   NA|  NA|    NA|
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+Best-so-far configuration:          14    mean value:     -1.058222787
+Description of the best-so-far configuration:
+   .ID. elitism_fraction mutation_rate pop_size generations .PARENT.
+14   14           0.3379        0.4738       40          40       NA
+
+# 2025-11-27 22:15:19 -03: Elite configurations (first number is the configuration ID; listed from best to worst according to the sum of ranks):
+   elitism_fraction mutation_rate pop_size generations
+14           0.3379        0.4738       40          40
+# 2025-11-27 22:15:19 -03: Iteration 2 of 3
+# experimentsUsedSoFar: 110
+# remainingBudget: 290
+# currentBudget: 145
+# nbConfigurations: 21
+# Markers:
+     x No test is performed.
+     c Configurations are discarded only due to capping.
+     - The test is performed and some configurations are discarded.
+     = The test is performed but no configuration is discarded.
+     ! The test is performed and configurations could be discarded but elite configurations are preserved.
+     . All alive configurations are elite and nothing is discarded
+
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+| |   Instance|      Alive|       Best|       Mean best| Exp so far|  W time|  rho|KenW|  Qvar|
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+|x|          6|         21|         26|    -1.092899792|         21|06:56:47|   NA|  NA|    NA|
+|x|          3|         21|         26|    -1.092899792|         41|06:52:28|+1.00|1.00|0.0000|
+|x|          2|         21|         26|    -1.092899792|         61|06:50:11|+1.00|1.00|0.0000|
+|x|          1|         21|         26|    -1.092899792|         81|06:48:05|+1.00|1.00|0.0000|
+|-|          5|          2|         26|    -1.092899792|        101|06:56:17|+1.00|1.00|0.0000|
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+Best-so-far configuration:          14    mean value:     -1.058222787
+Description of the best-so-far configuration:
+   .ID. elitism_fraction mutation_rate pop_size generations .PARENT.
+14   14           0.3379        0.4738       40          40       NA
+
+# 2025-11-29 08:39:10 -03: Elite configurations (first number is the configuration ID; listed from best to worst according to the sum of ranks):
+   elitism_fraction mutation_rate pop_size generations
+14           0.3379        0.4738       40          40
+26           0.2170        0.4903       40          40
+# 2025-11-29 08:39:10 -03: Iteration 3 of 3
+# experimentsUsedSoFar: 211
+# remainingBudget: 189
+# currentBudget: 189
+# nbConfigurations: 25
+# Markers:
+     x No test is performed.
+     c Configurations are discarded only due to capping.
+     - The test is performed and some configurations are discarded.
+     = The test is performed but no configuration is discarded.
+     ! The test is performed and configurations could be discarded but elite configurations are preserved.
+     . All alive configurations are elite and nothing is discarded
+
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+| |   Instance|      Alive|       Best|       Mean best| Exp so far|  W time|  rho|KenW|  Qvar|
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+|x|          7|         25|         57|    -1.105303924|         25|07:46:23|   NA|  NA|    NA|
+|x|          6|         25|         57|    -1.105303924|         48|07:06:40|+1.00|1.00|0.0000|
+|x|          3|         25|         57|    -1.105303924|         71|07:10:45|+1.00|1.00|0.0000|
+|x|          1|         25|         57|    -1.105303924|         94|07:01:43|+1.00|1.00|0.0000|
+|-|          4|          3|         57|    -1.105303924|        118|07:09:13|+1.00|1.00|0.0000|
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+Best-so-far configuration:          26    mean value:     -1.092899792
+Description of the best-so-far configuration:
+   .ID. elitism_fraction mutation_rate pop_size generations .PARENT.
+26   26            0.217        0.4903       40          40       14
+
+# 2025-11-30 20:53:57 -03: Elite configurations (first number is the configuration ID; listed from best to worst according to the sum of ranks):
+   elitism_fraction mutation_rate pop_size generations
+26           0.2170        0.4903       40          40
+14           0.3379        0.4738       40          40
+57           0.3719        0.4845       40          40
+# 2025-11-30 20:53:57 -03: Iteration 4 of 4
+# experimentsUsedSoFar: 329
+# remainingBudget: 71
+# currentBudget: 71
+# nbConfigurations: 10
+# Markers:
+     x No test is performed.
+     c Configurations are discarded only due to capping.
+     - The test is performed and some configurations are discarded.
+     = The test is performed but no configuration is discarded.
+     ! The test is performed and configurations could be discarded but elite configurations are preserved.
+     . All alive configurations are elite and nothing is discarded
+
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+| |   Instance|      Alive|       Best|       Mean best| Exp so far|  W time|  rho|KenW|  Qvar|
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+|x|          8|         10|         70|    -1.190616500|         10|03:22:28|   NA|  NA|    NA|
+|x|          4|         10|         70|    -1.190616500|         17|02:29:36|+1.00|1.00|0.0000|
+|x|          2|         10|         70|    -1.190616500|         25|03:16:54|+1.00|1.00|0.0000|
+|x|          7|         10|         70|    -1.190616500|         32|02:30:51|+1.00|1.00|0.0000|
+|-|          5|          4|         70|    -1.190616500|         40|03:19:34|+1.00|1.00|0.0000|
+|!|          3|          4|         70|    -1.190616500|         41|00:47:06|+1.00|1.00|0.0000|
+|!|          6|          4|         70|    -1.190616500|         42|00:47:26|+1.00|1.00|0.0000|
+|-|          1|          1|         70|    -1.190616500|         43|00:47:43|   NA|  NA|    NA|
++-+-----------+-----------+-----------+----------------+-----------+--------+-----+----+------+
+Best-so-far configuration:          70    mean value:     -1.190616500
+Description of the best-so-far configuration:
+   .ID. elitism_fraction mutation_rate pop_size generations .PARENT.
+70   70           0.2234         0.491       40          40       26
+
+# 2025-12-01 14:15:40 -03: Elite configurations (first number is the configuration ID; listed from best to worst according to the sum of ranks):
+   elitism_fraction mutation_rate pop_size generations
+70           0.2234         0.491       40          40
+# 2025-12-01 14:15:40 -03: Stopped because there is not enough budget left to race more than the minimum (3)
+# You may either increase the budget or set 'minNbSurvival' to a lower value
+# Iteration: 5
+# nbIterations: 5
+# experimentsUsedSoFar: 372
+# timeUsed: 0
+# remainingBudget: 28
+# currentBudget: 28
+# number of elites: 1
+# nbConfigurations: 3
+# Total CPU user time: 15.12, CPU sys time: 7.74, Wall-clock time: 443995.6
+   .ID. elitism_fraction mutation_rate pop_size generations .PARENT. .ALIVE. .RANK. .WEIGHT.
+70   70           0.2234         0.491       40          40       26    TRUE      1        1

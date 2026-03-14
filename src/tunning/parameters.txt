@@ -1,0 +1,6 @@
+### Parameter file
+# name                  switch                      type    values
+elitism_fraction        "--elitism_fraction "        r       (0.1, 0.9)
+mutation_rate           "--mutation_rate "           r       (0.05, 0.5)
+pop_size                "--pop_size "                c       (40)
+generations             "--generations "             c       (40)

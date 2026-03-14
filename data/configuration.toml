@@ -1,0 +1,29 @@
+[problem]
+name = "hybrid_propeller"
+diameter = 0.254
+hub_radius = 0.00825
+number_of_sections = 20
+
+[nsga2]
+pop_size = 500
+generations = 150
+mutation_rate = 0.49
+elite_fraction = 0.22
+seed = 42
+
+[[variables]]
+name = "n_blades"
+type = "int"
+min = 2
+max = 5
+
+[[variables]]
+name = "alpha"
+type = "float"
+min = -5.0
+max = 10.0
+
+[[variables]]
+name = "airfoil_list"
+type = "categorical"
+choices = ["E63", "NACA4412", "NACA0018"]

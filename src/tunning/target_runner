@@ -1,0 +1,28 @@
+#!/bin/bash
+
+ELITISM=""
+MUTATION=""
+POPSIZE=""
+GENERATIONS=""
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --elitism_fraction) ELITISM="$2"; shift ;;
+        --mutation_rate)    MUTATION="$2"; shift ;;
+        --pop_size)         POPSIZE="$2"; shift ;;
+        --generations)      GENERATIONS="$2"; shift ;;
+    esac
+    shift
+done
+
+echo "Running with elitism=$ELITISM mutation=$MUTATION pop=$POPSIZE gen=$GENERATIONS" >&2
+
+python3 main.py \
+    --elitism_fraction "${ELITISM}" \
+    --mutation_rate "${MUTATION}" \
+    --pop_size "${POPSIZE}" \
+    --generations "${GENERATIONS}" \
+    > pareto.json 2> main.log
+
+RESULT=$(python3 compute_hv_direct.py < pareto.json)
+echo "${RESULT}"

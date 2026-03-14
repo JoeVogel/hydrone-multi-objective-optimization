@@ -1,0 +1,29 @@
+LOAD e63.dat
+PPAR
+N 240
+T 1.0
+R 0.15
+
+
+PANE
+OPER
+MACH 0
+VISC 30000
+ITER 200
+VPAR
+N 5
+VACC 0.01
+
+PACC
+E63_30000.txt
+
+# ---- Start from a clean reference point ----
+ALFA 0
+ASEQ 0 30 0.1
+# ---- Re-initialize BL before sweeping positive to reduce failures ----
+INIT
+ALFA 0
+ASEQ 0 -15 -0.25
+PACC
+
+QUIT

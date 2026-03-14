@@ -1,0 +1,3 @@
+## Initial candidate configuration for irace
+elitism_fraction    mutation_rate    pop_size    generations
+0.5                 0.2              40          40
