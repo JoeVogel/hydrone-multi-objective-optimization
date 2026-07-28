@@ -1,4 +1,4 @@
-# hydrone-multi-objective-optimization
+# HyProp - Unified Framework for Multi-Objective Design and Optimization of Hybrid Aerial-Aquatic Propellers
 Repository of artifacts generated for Master's dissertation.
 
 ## Modules
