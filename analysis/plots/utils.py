@@ -8,6 +8,7 @@ import seaborn as sns
 from pathlib import Path
 from mpl_toolkits.mplot3d import art3d
 from matplotlib.patches import Circle
+from collections import Counter
 
 # ------ Propeller plotting utils ------
 airfoil_coords_base_path = Path("../../data/airfoil_coords")
@@ -575,24 +576,76 @@ def plot_pareto_front_matplot(df_pareto: pd.DataFrame):
     # Plot Pareto fronts
     plt.figure(figsize=(9, 6))
 
-    x = df_pareto["aerial_fitness"].to_numpy()
-    y = df_pareto["aquatic_fitness"].to_numpy()
+    x = df_pareto["aquatic_fitness"].to_numpy()
+    y = df_pareto["aerial_fitness"].to_numpy()
 
     order = np.argsort(x)
     x_sorted, y_sorted = x[order], y[order]
 
-    plt.plot(x_sorted, y_sorted, lw=1.5, alpha=0.7, color="blue")
-    plt.scatter(x, y, s=60, marker="o",
+    plt.scatter(x, y, s=20, marker="o",
                 facecolors="blue", edgecolors="black", linewidths=0.6,
                 alpha=0.9, label="Front")
 
     plt.title("Pareto Front — NSGA-II", pad=10)
-    plt.xlabel("Aerial fitness (ηa)")
-    plt.ylabel("Aquatic fitness (ηw)")
+    plt.ylabel("Aerial fitness")
+    plt.xlabel("Aquatic fitness")
     plt.grid(True, which="both", ls=":", lw=0.8, alpha=0.6)
 
     plt.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
     plt.tight_layout()
+    plt.show()
+
+def plot_pareto_front_with_solutions(df_pareto: pd.DataFrame, intermediate_representative_idx):
+
+    x = df_pareto['aquatic_fitness'].to_numpy()
+    y = df_pareto['aerial_fitness'].to_numpy()
+
+    best_aerial_pos = np.argmax(y)
+    best_aquatic_pos = np.argmax(x)
+
+    order = np.argsort(x)
+    x_sorted, y_sorted = x[order], y[order]
+
+    plt.figure(figsize=(9, 6))
+
+    # Pareto points
+    plt.scatter(x, y, s=20, marker="o",
+                facecolors="blue", edgecolors="black", linewidths=0.6,
+                alpha=0.9, label="Front")
+
+    # Highlight solutions
+    plt.scatter(x[best_aerial_pos], y[best_aerial_pos],
+                marker='s', s=120, color="orange",
+                edgecolors="black", linewidths=0.8,
+                label='Best aerial')
+
+    plt.scatter(x[best_aquatic_pos], y[best_aquatic_pos],
+                marker='^', s=120, color="green",
+                edgecolors="black", linewidths=0.8,
+                label='Best aquatic')
+
+    plt.scatter(x[intermediate_representative_idx], y[intermediate_representative_idx],
+                marker='*', s=220, color="red",
+                edgecolors="black", linewidths=0.8,
+                label='Intermediate')
+
+    plt.title("Pareto Front with Representative Propeller Designs", pad=10)
+    plt.ylabel("Aerial fitness")
+    plt.xlabel("Aquatic fitness")
+
+    plt.grid(True, which="both", ls=":", lw=0.8, alpha=0.6)
+    plt.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_hypervolume_evolution(generations, hv_values):
+    plt.figure(figsize=(10, 5))
+    plt.scatter(generations, hv_values, marker='o', color='b', s=10, edgecolors='black')
+    plt.title('Evolution of Hypervolume Indicator')
+    plt.xlabel('Generation')
+    plt.ylabel('Hypervolume (HV)')
+    plt.grid(True, linestyle='--', alpha=0.7)
     plt.show()
 
 # --------------------------------------------
@@ -703,3 +756,104 @@ def plot_combined_boxplots(df_runs: pd.DataFrame):
     plt.grid(True, ls="--", alpha=0.4)
     plt.legend(title="Fitness Type")
     plt.show()
+
+# --------------------------------------------
+
+# --- Plot chord e pitch---
+
+def _parse_array(s):
+    return np.array([float(v) for v in str(s).split(";")])
+
+def _radius_distribution(row):
+    n = int(row["number_of_sections"])
+    hub_radius = float(row["hub_radius"])
+    R = float(row["D"]) / 2000.0  # mm -> m -> radius
+
+    r = np.linspace(hub_radius, R, n)
+    return r / R
+
+def plot_representative_chord(df):
+
+    labels = ["Best aerial", "Intermediate", "Best aquatic"]
+
+    plt.figure(figsize=(9,6))
+
+    for i, (_, row) in enumerate(df.iterrows()):
+
+        chord = _parse_array(row["chord_list"])
+        r_over_R = _radius_distribution(row)
+
+        label = f"{labels[i]} (B={int(row['B'])})"
+
+        plt.plot(r_over_R, chord,
+                 marker="o",
+                 linewidth=1.8,
+                 label=label)
+
+    plt.title("Chord distribution of representative propeller designs", pad=10)
+    plt.xlabel("Normalized radius (r/R)")
+    plt.ylabel("Chord [m]")
+
+    plt.grid(True, which="both", ls=":", lw=0.8, alpha=0.6)
+    plt.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_representative_pitch(df):
+
+    labels = ["Best aerial", "Intermediate", "Best aquatic"]
+
+    plt.figure(figsize=(9,6))
+
+    for i, (_, row) in enumerate(df.iterrows()):
+
+        pitch = _parse_array(row["pitch_list"])
+        r_over_R = _radius_distribution(row)
+
+        label = f"{labels[i]} (B={int(row['B'])})"
+
+        plt.plot(r_over_R, pitch,
+                 marker="o",
+                 linewidth=1.8,
+                 label=label)
+
+    plt.title("Pitch distribution of representative propeller designs", pad=10)
+    plt.xlabel("Normalized radius (r/R)")
+    plt.ylabel("Pitch angle [deg]")
+
+    plt.grid(True, which="both", ls=":", lw=0.8, alpha=0.6)
+    plt.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
+
+    plt.tight_layout()
+    plt.show()
+
+def build_representative_summary(df):
+
+    labels = ["Best aerial", "Intermediate", "Best aquatic"]
+    rows = []
+
+    for i, (_, row) in enumerate(df.iterrows()):
+
+        chord = _parse_array(row["chord_list"])
+        pitch = _parse_array(row["pitch_list"])
+        foils = row["foil_list"].split(";")
+
+        foil_count = Counter(foils)
+        foil_summary = ", ".join([f"{k} ({v})" for k, v in foil_count.items()])
+
+        rows.append({
+            "Design": labels[i],
+            "Blades": int(row["B"]),
+            "Aerial fitness": row["aerial_fitness"],
+            "Aquatic fitness": row["aquatic_fitness"],
+            "Mean chord [m]": chord.mean(),
+            "Max chord [m]": chord.max(),
+            "Mean pitch [deg]": pitch.mean(),
+            "Airfoils": foil_summary
+        })
+
+    return pd.DataFrame(rows)
+
+# --------------------------------------------
+
