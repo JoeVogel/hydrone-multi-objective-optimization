@@ -1,6 +1,10 @@
 # HyProp - Unified Framework for Multi-Objective Design and Optimization of Hybrid Aerial-Aquatic Propellers
 Repository of artifacts generated for Master's dissertation.
 
+## Experiment results used in the Dissertation
+
+Because of the size of the result files, I've put them on Google Drive. You can find them [here](https://drive.google.com/drive/folders/1tcQXtOs6BNjN7plSd2KW7ACJvd1Ee3cZ?usp=sharing).
+
 ## Modules
 
 ### Airfoil Module
